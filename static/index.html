@@ -4,8 +4,6 @@
   <title>Simple Frontend</title>
 </head>
 <body>
-  <input type="text" id="dataToSend" placeholder="Enter data to send">
-  <button id="sendData">send data</button><br><br>
   <input type="text" id="repositoryUrl" placeholder="Enter repository URL">
   <button id="cloneRepository">Clone Repository</button><br><br>
   <textarea id="output" rows="10" cols="50" readonly></textarea><br>
@@ -15,26 +13,6 @@
     const output = document.getElementById("output");
     const clearButton = document.getElementById("clearOutput");
     const cloneButton = document.getElementById("cloneRepository");
-
-    document.getElementById("sendData").addEventListener("click", function() {
-        const data = document.getElementById("dataToSend").value;
-
-        fetch("/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ data: data }),
-        })
-        .then(response => response.text()) // Assuming the backend returns text
-        .then(result => {
-            alert(result);
-            document.getElementById("dataToSend").value = ""; // Clear the input field
-        })
-        .catch(error => {
-            alert("Error: " + error);
-        });
-    });
 
     cloneButton.addEventListener("click", function() {
       const repoUrl = document.getElementById("repositoryUrl").value;
@@ -52,7 +30,7 @@
     });
 
     function appendToOutput(message) {
-      output.value += message.data + "\n";
+      output.value += message + "\n";
       output.scrollTop = output.scrollHeight; // Auto-scroll
     }
 
@@ -63,7 +41,14 @@
     const socket = new WebSocket('ws://localhost:8080/ws');
 
         socket.addEventListener('open', function (event) {
-            console.log('WebSocket connected.');
+            console.log('WebSocket connected. Sending request to /mutation-test');
+            // Send a request to the backend to start the mutation tests
+            socket.send(JSON.stringify({ type: "start_mutation_test" })); 
+            // You might need to adjust the message format based on your backend's expectations.
+            //  If your backend simply starts upon connection, this line might not be needed,
+            //  or the message content might be different (e.g., an empty object: {}).
+            //  Refer to your backend implementation for the correct way to trigger the tests via the websocket.
+
         });
 
         socket.addEventListener('message', function (event) {
