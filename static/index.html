@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple Frontend</title>
+</head>
+<body>
+  <input type="text" id="dataToSend" placeholder="Enter data to send">
+  <button id="sendData">send data</button><br><br>
+  <input type="text" id="repositoryUrl" placeholder="Enter repository URL">
+  <button id="cloneRepository">Clone Repository</button><br><br>
+  <textarea id="output" rows="10" cols="50" readonly></textarea><br>
+  <button id="clearOutput">Clear Output</button>
+
+  <script>
+    const output = document.getElementById("output");
+    const clearButton = document.getElementById("clearOutput");
+    const cloneButton = document.getElementById("cloneRepository");
+
+    document.getElementById("sendData").addEventListener("click", function() {
+        const data = document.getElementById("dataToSend").value;
+
+        fetch("/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ data: data }),
+        })
+        .then(response => response.text()) // Assuming the backend returns text
+        .then(result => {
+            alert(result);
+            document.getElementById("dataToSend").value = ""; // Clear the input field
+        })
+        .catch(error => {
+            alert("Error: " + error);
+        });
+    });
+
+    cloneButton.addEventListener("click", function() {
+      const repoUrl = document.getElementById("repositoryUrl").value;
+      fetch("/clone?repo_url=" + encodeURIComponent(repoUrl), {
+        method: "GET",
+      })
+      .then(response => response.text())
+      .then(result => {
+        appendToOutput("Clone result: " + result);
+        document.getElementById("repositoryUrl").value = "";
+      })
+      .catch(error => {
+        appendToOutput("Error cloning: " + error);
+      });
+    });
+
+    function appendToOutput(message) {
+      output.value += message.data + "\n";
+      output.scrollTop = output.scrollHeight; // Auto-scroll
+    }
+
+    clearButton.addEventListener("click", function() {
+      output.value = "";
+    });
+
+    const socket = new WebSocket('ws://localhost:8080/ws');
+
+        socket.addEventListener('open', function (event) {
+            console.log('WebSocket connected.');
+        });
+
+        socket.addEventListener('message', function (event) {
+            appendToOutput(event);
+        });
+
+        socket.addEventListener('close', function (event) {
+            console.log('WebSocket disconnected.');
+        });
+  </script>
+</body>
+</html>
