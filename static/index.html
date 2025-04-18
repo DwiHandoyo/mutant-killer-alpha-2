@@ -6,6 +6,7 @@
 <body>
   <input type="text" id="repositoryUrl" placeholder="Enter repository URL">
   <button id="cloneRepository">Clone Repository</button><br><br>
+  <button id="runMutationTest">Run Mutation Test</button><br><br>
   <textarea id="output" rows="10" cols="50" readonly></textarea><br>
   <button id="clearOutput">Clear Output</button>
 
@@ -13,6 +14,7 @@
     const output = document.getElementById("output");
     const clearButton = document.getElementById("clearOutput");
     const cloneButton = document.getElementById("cloneRepository");
+    const runMutationTestButton = document.getElementById("runMutationTest");
 
     cloneButton.addEventListener("click", function() {
       const repoUrl = document.getElementById("repositoryUrl").value;
@@ -29,6 +31,28 @@
       });
     });
 
+    runMutationTestButton.addEventListener("click", function() {
+      fetch("/mutation-test", {
+        method: "POST",        
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          repo_url: document.getElementById("repositoryUrl").value,
+        }),
+      })
+      .then(response => {
+        if (response.ok) {
+          appendToOutput("Mutation test request sent!");
+        } else {
+          appendToOutput("Error sending mutation test request.");
+        }
+      })
+      .catch(error => {
+        appendToOutput("Error: " + error);
+      });
+    });
+
     function appendToOutput(message) {
       output.value += message + "\n";
       output.scrollTop = output.scrollHeight; // Auto-scroll
@@ -40,20 +64,13 @@
 
     const socket = new WebSocket('ws://localhost:8080/ws');
 
-        socket.addEventListener('open', function (event) {
-            console.log('WebSocket connected. Sending request to /mutation-test');
-            // Send a request to the backend to start the mutation tests
-            socket.send(JSON.stringify({ type: "start_mutation_test" })); 
-            // You might need to adjust the message format based on your backend's expectations.
-            //  If your backend simply starts upon connection, this line might not be needed,
-            //  or the message content might be different (e.g., an empty object: {}).
-            //  Refer to your backend implementation for the correct way to trigger the tests via the websocket.
+    socket.addEventListener('open', function (event) {
+      console.log('WebSocket connected.');
+    });
 
-        });
-
-        socket.addEventListener('message', function (event) {
-            appendToOutput(event);
-        });
+    socket.addEventListener('message', function (event) {
+      appendToOutput(event.data);
+    });
 
         socket.addEventListener('close', function (event) {
             console.log('WebSocket disconnected.');
