@@ -1,10 +1,13 @@
 import os
 import subprocess
 from typing import Any, Dict
+
+from flask_cors import CORS
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 
 app = Flask(__name__)
+CORS(app)
 socketio = SocketIO(app)
 
 CLONED_REPOS_DIR = "cloned_repos"  # Directory to store cloned repos
