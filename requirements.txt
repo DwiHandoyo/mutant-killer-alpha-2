@@ -4,3 +4,7 @@ Werkzeug==3.0.6
 flask
 Flask-Cors
 flask-socketio
+python-dotenv
+openai
+anthropic
+google-generativeai
