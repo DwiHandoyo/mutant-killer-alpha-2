@@ -3,15 +3,17 @@ import subprocess
 import shutil
 import time
 from typing import Any, Dict
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_socketio import SocketIO
 from flask_cors import CORS
 from llm.core.scanner import scan_and_generate_tests
 from llm.core.models import model_factory
+from git import Repo, GitCommandError
+
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, host="0.0.0.0", port=5000, cors_allowed_origins="*", async_mode='threading')
 
 CLONED_REPOS_DIR = os.path.join(os.getcwd(), "cloned_repos")  # Directory to store cloned repos
 
@@ -34,14 +36,33 @@ def handle_connect():
 def handle_my_custom_event(json_data):
     print(f"Received WebSocket message: {json_data}")
 
+def clone_repository(repository_url: str, local_directory: str) -> None:
+    """Clones a Git repository using GitPython."""
+    try:
+        print("cloning repository...")
+        Repo.clone_from(repository_url, local_directory)
+        print("Repository cloned successfully.")
+    except GitCommandError as e:
+        raise RuntimeError(f"Git clone failed: {str(e)}")
+
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    filepath = os.path.join(app.root_path, filename)
+    return send_file(filepath, as_attachment=True)
 
 @app.route('/mutation-test', methods=['POST'])
 def mutation_test():
     data: Dict[str, Any] = request.get_json()
-    if not data or 'repository_url' not in data:
-        return jsonify({'error': 'Missing repository_url'}), 400
+    if not data or 'repository_url' not in data or 'websocket_endpoint' not in data:
+        return jsonify({'error': 'Missing repository_url or websocket_endpoint'}), 400
 
     repository_url: str = data['repository_url']
+    websocket_endpoint: str = data['websocket_endpoint']
+
+    send_websocket_notification(f"Received repository URL: {repository_url}")
+    send_websocket_notification(f"Using WebSocket endpoint: {websocket_endpoint}")
+
     repo_name: str = repository_url.split('/')[-1].replace('.git', '')  # Extract repo name
     local_directory: str = get_repo_path(repo_name)
     send_websocket_notification("running")
@@ -102,21 +123,10 @@ def send_websocket_notification(message: str) -> None:
 
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
 
 
-from git import Repo, GitCommandError
 
-def clone_repository(repository_url: str, local_directory: str) -> None:
-    """Clones a Git repository using GitPython."""
-    try:
-        print("cloning repository...")
-        Repo.clone_from(repository_url, local_directory)
-        print("Repository cloned successfully.")
-    except GitCommandError as e:
-        raise RuntimeError(f"Git clone failed: {str(e)}")
-
-import fnmatch
 
 def detect_language(local_directory: str) -> bool:
     """

@@ -4,6 +4,14 @@ FROM python:3.9-slim as python-base
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies for PHP and Composer
+RUN apt-get update && apt-get install -y \
+    php-cli php-mbstring git unzip curl && \
+    apt-get clean
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
 # Copy Python dependencies
 COPY requirements.txt /app/
 
@@ -13,8 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . /app/
 
-# Expose Flask port
-EXPOSE 5000
+# Expose Flask and PHP ports
+EXPOSE 5000 9000
 
 # Command to run Flask app
 CMD ["python", "main.py"]

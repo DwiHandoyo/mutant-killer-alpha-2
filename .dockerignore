@@ -1,0 +1,28 @@
+# Ignore cloned repositories
+cloned_repos/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore node_modules (if applicable)
+node_modules/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Ignore Docker-related files
+docker-compose.override.yml
+.dockerignore
+Dockerfile*
+
+# Ignore uploads and generated files
+uploads/
+output-ast/
+
+# Ignore IDE-specific files
+.vscode/
+.idea/

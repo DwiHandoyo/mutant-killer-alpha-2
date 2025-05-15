@@ -33,20 +33,23 @@
     });
 
     runMutationTestButton.addEventListener("click", function() {
+      const repositoryUrl = document.getElementById("repositoryUrl").value;
+      const websocketEndpoint = "ws://127.0.0.1:5000"; // Example WebSocket endpoint
+
       fetch("http://localhost:5000/mutation-test", {
         method: "POST",        
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          repository_url: document.getElementById("repositoryUrl").value,
+          repository_url: repositoryUrl,
+          websocket_endpoint: websocketEndpoint
         }),
       })
       .then(response => {
         if (response.ok) {
           appendToOutput("Mutation test request sent!");
         } else {
-
           appendToOutput("Error sending mutation test request: " + String(response));
         }
       })
