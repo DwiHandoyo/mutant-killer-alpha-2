@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import time
+import zipfile
 from typing import Any, Dict
 from flask import Flask, request, jsonify, send_file
 from flask_socketio import SocketIO
@@ -10,12 +11,15 @@ from llm.core.scanner import scan_and_generate_tests
 from llm.core.models import model_factory
 from git import Repo, GitCommandError
 
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = os.getenv("PORT", 5000)  
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, host="0.0.0.0", port=5000, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, host=HOST, port=PORT, cors_allowed_origins="*", async_mode='threading')
 
 CLONED_REPOS_DIR = os.path.join(os.getcwd(), "cloned_repos")  # Directory to store cloned repos
+GENERATED_ZIPS_DIR = os.path.join(os.getcwd(), "generated_zips")  # Directory to store cloned repos
 
 if not os.path.exists(CLONED_REPOS_DIR):
     os.makedirs(CLONED_REPOS_DIR)
@@ -46,88 +50,6 @@ def clone_repository(repository_url: str, local_directory: str) -> None:
         raise RuntimeError(f"Git clone failed: {str(e)}")
 
 
-@app.route('/download/<filename>')
-def download_file(filename):
-    filepath = os.path.join(app.root_path, filename)
-    return send_file(filepath, as_attachment=True)
-
-@app.route('/mutation-test', methods=['POST'])
-def mutation_test():
-    data: Dict[str, Any] = request.get_json()
-    if not data or 'repository_url' not in data or 'websocket_endpoint' not in data:
-        return jsonify({'error': 'Missing repository_url or websocket_endpoint'}), 400
-
-    repository_url: str = data['repository_url']
-    websocket_endpoint: str = data['websocket_endpoint']
-
-    send_websocket_notification(f"Received repository URL: {repository_url}")
-    send_websocket_notification(f"Using WebSocket endpoint: {websocket_endpoint}")
-
-    repo_name: str = repository_url.split('/')[-1].replace('.git', '')  # Extract repo name
-    local_directory: str = get_repo_path(repo_name)
-    send_websocket_notification("running")
-    result = subprocess.run(["php", "-v"], capture_output=True, text=True)
-    print(result)
-    try:
-        if not os.path.exists(local_directory):
-            clone_repository(repository_url, local_directory)
-            send_websocket_notification("Repository cloned successfully.")
-        else:
-            send_websocket_notification("Repository already cloned, skipping clone.")
-
-        is_php: bool = detect_language(local_directory)
-        send_websocket_notification(f"Is PHP project: {is_php}")
-
-
-        if is_php:
-            run_composer_install(local_directory)
-            send_websocket_notification("Composer install completed.")
-            run_mutation_testing(local_directory)
-            send_websocket_notification("Mutation testing completed.")
-        else:
-            send_websocket_notification("Not a PHP project, skipping mutation testing.")
-            return jsonify({'status': 'Not a PHP project'}), 400
-
-        for model_name in ['chatgpt', 'gemini', 'claude']:
-            model = model_factory(model_name)
-            scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'test'), model)
-
-        # Placeholder for analyzing unkilled mutants
-        # In a real implementation, you'd parse the output of Infection
-        # and extract information about unkilled mutants.
-        # For now, we'll just simulate it.
-        # unkilled_mutants = analyze_unkilled_mutants(local_directory)
-        # send_websocket_notification(f"Unkilled mutants: {unkilled_mutants}")
-
-        return jsonify({'status': 'Mutation testing completed successfully.'}), 200
-
-    except RuntimeError as e:
-        send_websocket_notification(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-def analyze_unkilled_mutants(local_directory: str) -> str:
-    """Abstract method for analyzing unkilled mutants and generating test cases."""
-    # In a real implementation, this function would:
-    # 1. Parse the output of the Infection run (likely an HTML or JSON report).
-    # 2. Identify the mutants that were not killed by the existing test suite.
-    # 3. Potentially suggest or generate new test cases to target those mutants.
-    # For this example, we'll just return a placeholder message.
-    return "Analysis of unkilled mutants (implementation needed)"
-
-
-def send_websocket_notification(message: str) -> None:
-    """Sends a notification to the client via WebSocket."""
-    print(message)
-    socketio.emit('notification', {'message': message})
-
-
-if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
-
-
-
-
 def detect_language(local_directory: str) -> bool:
     """
     Detects if a repository is a PHP project by checking for:
@@ -156,60 +78,6 @@ def detect_language(local_directory: str) -> bool:
             return True
 
     return False
-
-
-import json
-
-DEFAULT_COMPOSER_JSON = {
-    "autoload": {
-        "psr-4": {
-            "App\\": "src/",
-            "func\\": "src/",
-            "SecurityService\\": "src/",
-            "App\\Mutator\\": "custom-mutators/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Tests\\": "tests/"
-        }
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^10.5.16",
-        "infection/infection": "^0.26.21",
-        "rector/rector": "^2.0"
-    },
-    "require": {
-        "infection/mutator": "^0.4.0"
-    },
-    "config": {
-        "allow-plugins": {
-            "infection/extension-installer": True
-        },
-        "process-timeout": 0
-    }
-}
-
-DEFAULT_INFECTION_JSON5 = {
-    "source": {
-        "directories": ["src", "tests"],
-        "excludes": ["vendor"]
-    },
-    "phpUnit": {
-        "configDir": "."
-    },
-    "mutators": {
-        "@default": True
-    },
-    "timeout": 10,
-    "logs": {
-        "text": "infection.log",
-        "html": "infection.html",
-        "json": "infection.json",
-        "summary": "summary.log"
-    }
-}
-
 
 def ensure_default_files(local_directory: str):
     composer_path = os.path.join(local_directory, "composer.json")
@@ -295,3 +163,152 @@ def extract_ast_from_php(directory):
     # (Opsional) hapus setelah selesai
     os.remove(target_script)
     send_websocket_notification("AST extracted.")
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    filepath = os.path.join(app.root_path, filename)
+    return send_file(filepath, as_attachment=True)
+
+@app.route('/mutation-test', methods=['POST'])
+def mutation_test():
+    data: Dict[str, Any] = request.get_json()
+    if not data or 'repository_url' not in data or 'websocket_endpoint' not in data:
+        return jsonify({'error': 'Missing repository_url or websocket_endpoint'}), 400
+
+    repository_url: str = data['repository_url']
+    websocket_endpoint: str = data['websocket_endpoint']
+
+    send_websocket_notification(f"Received repository URL: {repository_url}")
+    send_websocket_notification(f"Using WebSocket endpoint: {websocket_endpoint}")
+
+    repo_name: str = repository_url.split('/')[-1].replace('.git', '')  # Extract repo name
+    local_directory: str = get_repo_path(repo_name)
+    send_websocket_notification("running")
+    result = subprocess.run(["php", "-v"], capture_output=True, text=True)
+    print(result)
+    try:
+        if not os.path.exists(local_directory):
+            clone_repository(repository_url, local_directory)
+            send_websocket_notification("Repository cloned successfully.")
+        else:
+            send_websocket_notification("Repository already cloned, skipping clone.")
+
+        is_php: bool = detect_language(local_directory)
+        send_websocket_notification(f"Is PHP project: {is_php}")
+
+
+        if is_php:
+            # run_composer_install(local_directory)
+            send_websocket_notification("Composer install completed.")
+            # run_mutation_testing(local_directory)
+            send_websocket_notification("Mutation testing completed.")
+        else:
+            send_websocket_notification("Not a PHP project, skipping mutation testing.")
+            return jsonify({'status': 'Not a PHP project'}), 400
+
+        # for model_name in ['chatgpt', 'gemini', 'claude']:
+        #     model = model_factory(model_name)
+        #     scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'test'), model)
+
+        # Placeholder for analyzing unkilled mutants
+        # In a real implementation, you'd parse the output of Infection
+        # and extract information about unkilled mutants.
+        # For now, we'll just simulate it.
+        # unkilled_mutants = analyze_unkilled_mutants(local_directory)
+        # send_websocket_notification(f"Unkilled mutants: {unkilled_mutants}")
+
+        # Create a zip file of the 'src' and 'tests' directories only
+        zip_filename = f"{repo_name}.zip"
+        zip_filepath = os.path.join(app.root_path, GENERATED_ZIPS_DIR, zip_filename)
+        with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+            for folder in ['src', 'tests']:
+                folder_path = os.path.join(local_directory, folder)
+                if os.path.exists(folder_path):
+                    for root, _, files in os.walk(folder_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, local_directory)
+                            zipf.write(file_path, arcname)
+
+        # Return the download URL for the zip file
+        download_url = f"{HOST}:{PORT}/download/{zip_filename}"
+        print(f"Download URL: {download_url}")
+        return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url}), 200
+
+    except RuntimeError as e:
+        send_websocket_notification(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def analyze_unkilled_mutants(local_directory: str) -> str:
+    """Abstract method for analyzing unkilled mutants and generating test cases."""
+    # In a real implementation, this function would:
+    # 1. Parse the output of the Infection run (likely an HTML or JSON report).
+    # 2. Identify the mutants that were not killed by the existing test suite.
+    # 3. Potentially suggest or generate new test cases to target those mutants.
+    # For this example, we'll just return a placeholder message.
+    return "Analysis of unkilled mutants (implementation needed)"
+
+
+def send_websocket_notification(message: str) -> None:
+    """Sends a notification to the client via WebSocket."""
+    print(message)
+    socketio.emit('notification', {'message': message})
+
+
+if __name__ == "__main__":
+    socketio.run(app, host=HOST, port=PORT, debug=True, allow_unsafe_werkzeug=True)
+
+
+
+import json
+
+DEFAULT_COMPOSER_JSON = {
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/",
+            "func\\": "src/",
+            "SecurityService\\": "src/",
+            "App\\Mutator\\": "custom-mutators/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5.16",
+        "infection/infection": "^0.26.21",
+        "rector/rector": "^2.0"
+    },
+    "require": {
+        "infection/mutator": "^0.4.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "infection/extension-installer": True
+        },
+        "process-timeout": 0
+    }
+}
+
+DEFAULT_INFECTION_JSON5 = {
+    "source": {
+        "directories": ["src", "tests"],
+        "excludes": ["vendor"]
+    },
+    "phpUnit": {
+        "configDir": "."
+    },
+    "mutators": {
+        "@default": True
+    },
+    "timeout": 10,
+    "logs": {
+        "text": "infection.log",
+        "html": "infection.html",
+        "json": "infection.json",
+        "summary": "summary.log"
+    }
+}

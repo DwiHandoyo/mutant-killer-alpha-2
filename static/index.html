@@ -46,11 +46,24 @@
           websocket_endpoint: websocketEndpoint
         }),
       })
-      .then(response => {
-        if (response.ok) {
-          appendToOutput("Mutation test request sent!");
+      .then(response => response.json())
+      .then(data => {
+        if (data.download_url) {
+          appendToOutput("Mutation test completed! Downloading zip file...");
+          const downloadButton = document.createElement("button");
+          downloadButton.textContent = "Download Repository Zip";
+          downloadButton.onclick = function() {
+            const downloadLink = document.createElement("a");
+            downloadLink.href = data.download_url;
+            downloadLink.download = "repository.zip";
+            alert(data.download_url);
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+          };
+          document.body.appendChild(downloadButton);
         } else {
-          appendToOutput("Error sending mutation test request: " + String(response));
+          appendToOutput("Error: " + (data.error || "Unknown error"));
         }
       })
       .catch(error => {
