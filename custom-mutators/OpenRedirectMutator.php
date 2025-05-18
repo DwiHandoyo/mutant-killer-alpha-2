@@ -25,12 +25,39 @@ final class OpenRedirectMutator implements Mutator
         foreach ($node->args as $arg) {
             if ($arg->value instanceof Node\Expr\BinaryOp\Concat || $arg->value instanceof String_) {
                 if (strpos($arg->value instanceof String_ ? $arg->value->value : '', 'Location:') !== false) {
-                    yield new FuncCall(
-                        new Name('header'),
-                        [
-                            new Arg(new String_('Location: http://evil.com'))
-                        ]
-                    );
+                    $payloads = [
+                        'Location: https://example.com/redirect/http://malicious.com',
+                        'Location: https://example.com/redirect/../http://malicious.com',
+                        'Location: ?checkout_url=http://malicious.com',
+                        'Location: ?continue=http://malicious.com',
+                        'Location: ?dest=http://malicious.com',
+                        'Location: ?destination=http://malicious.com',
+                        'Location: ?go=http://malicious.com',
+                        'Location: ?image_url=http://malicious.com',
+                        'Location: ?next=http://malicious.com',
+                        'Location: ?redir=http://malicious.com',
+                        'Location: ?redirect_uri=http://malicious.com',
+                        'Location: ?redirect_url=http://malicious.com',
+                        'Location: ?redirect=http://malicious.com',
+                        'Location: ?return_path=http://malicious.com',
+                        'Location: ?return_to=http://malicious.com',
+                        'Location: ?return=http://malicious.com',
+                        'Location: ?returnTo=http://malicious.com',
+                        'Location: ?rurl=http://malicious.com',
+                        'Location: ?target=http://malicious.com',
+                        'Location: ?url=http://malicious.com',
+                        'Location: ?view=http://malicious.com',
+                        'Location: /http://malicious.com'
+                    ];
+
+                    foreach ($payloads as $payload) {
+                        yield new FuncCall(
+                            new Name('header'),
+                            [
+                                new Arg(new String_($payload))
+                            ]
+                        );
+                    }
                 }
             }
         }
@@ -46,7 +73,28 @@ final class OpenRedirectMutator implements Mutator
             null,
             <<<'DIFF'
                 - header("Location: /dashboard");
-                + header("Location: http://evil.com");
+                + header("Location: https://example.com/redirect/http://malicious.com");
+                + header("Location: https://example.com/redirect/../http://malicious.com");
+                + header("Location: ?checkout_url=http://malicious.com");
+                + header("Location: ?continue=http://malicious.com");
+                + header("Location: ?dest=http://malicious.com");
+                + header("Location: ?destination=http://malicious.com");
+                + header("Location: ?go=http://malicious.com");
+                + header("Location: ?image_url=http://malicious.com");
+                + header("Location: ?next=http://malicious.com");
+                + header("Location: ?redir=http://malicious.com");
+                + header("Location: ?redirect_uri=http://malicious.com");
+                + header("Location: ?redirect_url=http://malicious.com");
+                + header("Location: ?redirect=http://malicious.com");
+                + header("Location: ?return_path=http://malicious.com");
+                + header("Location: ?return_to=http://malicious.com");
+                + header("Location: ?return=http://malicious.com");
+                + header("Location: ?returnTo=http://malicious.com");
+                + header("Location: ?rurl=http://malicious.com");
+                + header("Location: ?target=http://malicious.com");
+                + header("Location: ?url=http://malicious.com");
+                + header("Location: ?view=http://malicious.com");
+                + header("Location: /http://malicious.com");
                 DIFF
         );
     }

