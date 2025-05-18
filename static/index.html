@@ -56,7 +56,6 @@
             const downloadLink = document.createElement("a");
             downloadLink.href = data.download_url;
             downloadLink.download = "repository.zip";
-            alert(data.download_url);
             document.body.appendChild(downloadLink);
             downloadLink.click();
             document.body.removeChild(downloadLink);
@@ -64,6 +63,14 @@
           document.body.appendChild(downloadButton);
         } else {
           appendToOutput("Error: " + (data.error || "Unknown error"));
+        }
+
+        // Display infection results
+        if (data.first_infection_result) {
+          appendToOutput("First Infection Result: " + JSON.stringify(data.first_infection_result, null, 2));
+        }
+        if (data.final_infection_result) {
+          appendToOutput("Final Infection Result: " + JSON.stringify(data.final_infection_result, null, 2));
         }
       })
       .catch(error => {

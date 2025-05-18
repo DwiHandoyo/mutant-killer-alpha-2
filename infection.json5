@@ -1,0 +1,48 @@
+{
+    "source": {
+        "directories": [
+            "src"
+        ],
+        "excludes": [
+            "vendor"
+        ]
+    },
+    "phpUnit": {
+        "configDir": "."
+    },
+    "mutators": {
+        "@default": true,
+        "App\\Mutator\\RandomBytesToOpenSslRandomPseudoBytes": true,
+        "App\\Mutator\\RandomBytesToRandomInt": true,
+        "App\\Mutator\\RandomBytesToMcryptCreateIv": true,
+        "App\\Mutator\\RandomBytesToMtRand": true,
+        "App\\Mutator\\HmacAlgoToMd5": true,
+        "App\\Mutator\\HmacAlgoToSha1": true,
+        "App\\Mutator\\HmacAlgoToSha512": true,
+        "App\\Mutator\\HmacAlgoToSha384": true,
+        "App\\Mutator\\HmacAlgoToBlake2b": true,
+        "App\\Mutator\\HmacAlgoToBlake2s": true,
+        "App\\Mutator\\HmacAlgoToTiger1283": true,
+        "App\\Mutator\\HmacAlgoToWhirlpool": true,
+        "App\\Mutator\\HashEqualsToStrcmp": true,
+        "App\\Mutator\\HashEqualsToStrcasecmp": true,
+        "App\\Mutator\\HashEqualsToStrcoll": true,
+        "App\\Mutator\\HashEqualsToLevenshtein": true,
+        "App\\Mutator\\OP_PP_ToEmptyString": true,
+        "App\\Mutator\\OP_AP_ToOriginalPath": true,
+        "App\\Mutator\\OP_FP_ToSimpleConcat": true,
+        "App\\Mutator\\OP_ExAP_ToTrue": true,
+        "App\\Mutator\\OP_ExFP_ToTrue": true,
+        "App\\Mutator\\OP_ExPer_ToTrue": true,
+        "App\\Mutator\\OpenRedirectMutator": true,
+        "App\\Mutator\\FileInclusionMutator": true,
+        "App\\Mutator\\OP_ExReF_ToTrue": true
+    },
+    "timeout": 10,
+    "logs": {
+        "text": "infection.log",
+        "html": "infection.html",
+        "json": "infection.json",
+        "summary": "summary.log"
+    }
+}
