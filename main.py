@@ -3,6 +3,7 @@ import subprocess
 import shutil
 import time
 import zipfile
+import stat
 from typing import Any, Dict
 from flask import Flask, request, jsonify, send_file
 from flask_socketio import SocketIO
@@ -10,9 +11,11 @@ from flask_cors import CORS
 from llm.core.scanner import scan_and_generate_tests
 from llm.core.models import model_factory
 from git import Repo, GitCommandError
+from parser.infection_parser import group_by_original_file_path
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = os.getenv("PORT", 5000)  
+MODEL = 'chatgpt'
 
 app = Flask(__name__)
 CORS(app)
@@ -98,11 +101,62 @@ def run_composer_install(local_directory: str) -> None:
     # subprocess.run(["composer", "update", "infection/infection", "--no-interaction", "--prefer-dist"], cwd=local_directory, shell=True)
     # subprocess.run(["composer", "update"], cwd=local_directory, shell=True)
 
+        # Copy vendor and custom-mutators folders, and infection.json5
+    source_vendor = os.path.join(app.root_path, 'vendor')
+    target_vendor = os.path.join(local_directory, 'vendor')
+    source_mutators = os.path.join(app.root_path, 'custom-mutators')
+    target_mutators = os.path.join(local_directory, 'custom-mutators')
+    source_infection = os.path.join(app.root_path, 'infection.json5')
+    target_infection = os.path.join(local_directory, 'infection.json5')
+    source_composer = os.path.join(app.root_path, 'composer.json')
+    target_composer = os.path.join(local_directory, 'composer.json')
+    source_composer_lock = os.path.join(app.root_path, 'composer.lock')
+    target_composer_lock = os.path.join(local_directory, 'composer.lock')
+
+    
+    vendor_zip_path = os.path.join(app.root_path, 'vendor.zip')
+
+    send_websocket_notification("composer install preparation")
+    # Copy vendor folder using zip strategy
+    if os.path.exists(vendor_zip_path):
+
+        # Copy the zip file to the target directory
+        target_zip_path = os.path.join(local_directory, 'vendor.zip')
+        shutil.copy2(vendor_zip_path, target_zip_path)
+
+        if os.path.exists(target_vendor):
+            print("removing vendor folder")
+            os.system('rmdir /S /Q "{}"'.format(target_vendor))
+
+        # Extract the zip file in the target directory
+        with zipfile.ZipFile(target_zip_path, 'r') as zipf:
+            zipf.extractall(target_vendor)
+
+        # Clean up the zip files
+        os.remove(target_zip_path)
+
+    # Copy custom-mutators folder
+    if os.path.exists(source_mutators):
+        if os.path.exists(target_mutators):
+            os.system('rmdir /S /Q "{}"'.format(target_mutators))
+        shutil.copytree(source_mutators, target_mutators)
+
+    # Copy infection.json5 file
+    if os.path.exists(source_infection):
+        shutil.copy2(source_infection, target_infection)
+
+    # Copy composer.json file
+    if os.path.exists(source_composer):
+        shutil.copy2(source_composer, target_composer)
+
+    # Copy composer.lock file
+    if os.path.exists(source_composer_lock):
+        shutil.copy2(source_composer_lock, target_composer_lock)
+
     send_websocket_notification("Running `composer install`...")
     composer_cmd = ["composer", "install", "--no-interaction", "--prefer-dist", "--no-plugins"]
     result = subprocess.run(composer_cmd, cwd=local_directory, text=True, shell=True)
     
-    print(result)
     if result.returncode != 0:
         raise RuntimeError(f"Composer install failed:\n{result.stderr}")
 
@@ -110,7 +164,6 @@ def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
     send_websocket_notification("Running mutation testing via Infection...")
 
-    print(local_directory)
     try:
         result = subprocess.run(
             ["vendor\\bin\\infection"],
@@ -119,7 +172,6 @@ def run_mutation_testing(local_directory: str) -> None:
             timeout=600,
             shell=True
         )
-        print(result)
     except subprocess.TimeoutExpired:
         raise RuntimeError("Mutation testing timed out after 10 minutes.")
 
@@ -150,8 +202,6 @@ def extract_ast_from_php(directory):
         # Jalankan dari dalam folder repo
         src_dir = os.path.join(directory, target)
         output_dir = os.path.join(directory, "output-ast")
-
-        print(src_dir, output_dir)
 
         subprocess.run([
             "php", "extract_ast.php", src_dir, output_dir
@@ -184,8 +234,7 @@ def mutation_test():
     repo_name: str = repository_url.split('/')[-1].replace('.git', '')  # Extract repo name
     local_directory: str = get_repo_path(repo_name)
     send_websocket_notification("running")
-    result = subprocess.run(["php", "-v"], capture_output=True, text=True)
-    print(result)
+
     try:
         if not os.path.exists(local_directory):
             clone_repository(repository_url, local_directory)
@@ -194,21 +243,25 @@ def mutation_test():
             send_websocket_notification("Repository already cloned, skipping clone.")
 
         is_php: bool = detect_language(local_directory)
-        send_websocket_notification(f"Is PHP project: {is_php}")
+        send_websocket_notification(f"project is php")
 
 
         if is_php:
-            # run_composer_install(local_directory)
+            run_composer_install(local_directory)
             send_websocket_notification("Composer install completed.")
-            # run_mutation_testing(local_directory)
+            run_mutation_testing(local_directory)
             send_websocket_notification("Mutation testing completed.")
         else:
             send_websocket_notification("Not a PHP project, skipping mutation testing.")
             return jsonify({'status': 'Not a PHP project'}), 400
 
-        # for model_name in ['chatgpt', 'gemini', 'claude']:
-        #     model = model_factory(model_name)
-        #     scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'test'), model)
+        first_infection_result = {}
+        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
+            first_infection_result = json.load(f)
+        infection_result_map = group_by_original_file_path(first_infection_result, local_directory)
+
+        model = model_factory(MODEL, infection_result_map)
+        scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'test'), model)
 
         # Placeholder for analyzing unkilled mutants
         # In a real implementation, you'd parse the output of Infection
@@ -216,6 +269,12 @@ def mutation_test():
         # For now, we'll just simulate it.
         # unkilled_mutants = analyze_unkilled_mutants(local_directory)
         # send_websocket_notification(f"Unkilled mutants: {unkilled_mutants}")
+
+
+        run_mutation_testing(local_directory)
+        final_infection_result = {}
+        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
+            final_infection_result = json.load(f)
 
         # Create a zip file of the 'src' and 'tests' directories only
         zip_filename = f"{repo_name}.zip"
@@ -232,8 +291,7 @@ def mutation_test():
 
         # Return the download URL for the zip file
         download_url = f"{HOST}:{PORT}/download/{zip_filename}"
-        print(f"Download URL: {download_url}")
-        return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url}), 200
+        return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url, "first_infection_result": first_infection_result, "final_infection_result": final_infection_result}), 200
 
     except RuntimeError as e:
         send_websocket_notification(f"Error: {e}")
@@ -252,7 +310,7 @@ def analyze_unkilled_mutants(local_directory: str) -> str:
 
 def send_websocket_notification(message: str) -> None:
     """Sends a notification to the client via WebSocket."""
-    print(message)
+    print(f"Sending WebSocket notification: {message}")
     socketio.emit('notification', {'message': message})
 
 
