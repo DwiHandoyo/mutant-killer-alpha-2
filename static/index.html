@@ -66,11 +66,27 @@
         }
 
         // Display infection results
-        if (data.first_infection_result) {
-          appendToOutput("First Infection Result: " + JSON.stringify(data.first_infection_result, null, 2));
-        }
-        if (data.final_infection_result) {
-          appendToOutput("Final Infection Result: " + JSON.stringify(data.final_infection_result, null, 2));
+        if (data.first_infection_result && data.final_infection_result) {
+          appendToOutput("Comparing Infection Results:");
+
+          const keys = [
+            "totalMutantsCount","killedCount","notCoveredCount","escapedCount", "errorCount", "syntaxErrorCount", "skippedCount", "ignoredCount", "timeOutCount", "msi", "mutationCodeCoverage"
+          ];
+
+          keys.forEach(key => {
+            const firstValue = data.first_infection_result?.stats[key] || 0;
+            const finalValue = data.final_infection_result?.stats[key] || 0;
+            const difference = finalValue - firstValue;
+
+            appendToOutput(`${key}: First = ${firstValue}, Final = ${finalValue}, Difference = ${difference}`);
+          });
+        } else {
+          if (data.first_infection_result) {
+            appendToOutput("First Infection Result: " + JSON.stringify(data.first_infection_result, null, 2));
+          }
+          if (data.final_infection_result) {
+            appendToOutput("Final Infection Result: " + JSON.stringify(data.final_infection_result, null, 2));
+          }
         }
       })
       .catch(error => {

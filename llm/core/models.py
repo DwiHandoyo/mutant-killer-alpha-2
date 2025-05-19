@@ -22,7 +22,7 @@ def model_factory(model_name, infection_result={}):
         import google.generativeai as genai
         from llm.adapters.gemini import GeminiAdapter
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        return GeminiAdapter(genai.GenerativeModel("gemini-pro"), infection_result)
+        return GeminiAdapter(genai.GenerativeModel("gemini-2.0-flash"), infection_result)
 
     else:
         raise ValueError(f"Unknown model: {model_name}")

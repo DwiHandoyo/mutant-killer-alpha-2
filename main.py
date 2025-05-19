@@ -4,6 +4,7 @@ import shutil
 import time
 import zipfile
 import stat
+import json
 from typing import Any, Dict
 from flask import Flask, request, jsonify, send_file
 from flask_socketio import SocketIO
@@ -15,7 +16,7 @@ from parser.infection_parser import group_by_original_file_path
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = os.getenv("PORT", 5000)  
-MODEL = 'chatgpt'
+MODEL = 'gemini'
 
 app = Flask(__name__)
 CORS(app)
@@ -133,7 +134,10 @@ def run_composer_install(local_directory: str) -> None:
             zipf.extractall(target_vendor)
 
         # Clean up the zip files
-        os.remove(target_zip_path)
+        try :
+            os.remove(vendor_zip_path)
+        except PermissionError:
+            print("PermissionError: Unable to remove vendor.zip. It might be in use.")
 
     # Copy custom-mutators folder
     if os.path.exists(source_mutators):
@@ -260,8 +264,8 @@ def mutation_test():
             first_infection_result = json.load(f)
         infection_result_map = group_by_original_file_path(first_infection_result, local_directory)
 
-        model = model_factory(MODEL, infection_result_map)
-        scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'test'), model)
+        # model = model_factory(MODEL, infection_result_map)
+        # scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model)
 
         # Placeholder for analyzing unkilled mutants
         # In a real implementation, you'd parse the output of Infection

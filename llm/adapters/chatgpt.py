@@ -13,14 +13,14 @@ class ChatGPTAdapter(LLMAdapter):
         if len(self.infection_result.values()):
             if filename in self.infection_result:
                 
-                PROMPT += f"```php\n{source_code}\n```\n"
+                PROMPT += f"\n{source_code}\n\n"
                 PROMPT += f"\nperhatikan infection result berikut pada 'escaped' dan 'uncovered'. Escaped adalah mutant yang tidak berhasil ter-kill dan uncovered adalah yang tidak ada test casenya. Pada tiap element di escaped dan uncovered ada startLine yang menandakan line yang dilakukan mutation"
                 PROMPT += f"\n\nInfection result: {self.infection_result[filename]}"
             else:
                 return 
         prompt = (
             f"Saya punya file PHP `{filename}` berikut:\n"
-            f"```php\n{source_code}\n```\n"
+            f"\n{source_code}\n\n"
             f"{PROMPT}"
         )
         response = self.client.chat.completions.create(
@@ -70,5 +70,5 @@ class ChatGPTAdapter(LLMAdapter):
                 filename = os.path.basename(source_path).replace(".php", "Test.php")
                 path = os.path.join(output_dir, filename)
                 with open(path, "w") as f:
-                    f.write(result)
+                    f.write(result.replace("```php", "").replace("```", ""))
                 return path

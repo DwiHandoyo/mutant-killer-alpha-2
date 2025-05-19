@@ -18,4 +18,4 @@ def scan_and_generate_tests(src_dir, output_dir, adapter, mode="file"):
 
             output_path = os.path.join(output_dir, f"{filename.replace('.php', 'Test.php')}")
             with open(output_path, "w") as out:
-                out.write(test_code)
+                out.write(test_code.replace("```php", "").replace("```", ""))
