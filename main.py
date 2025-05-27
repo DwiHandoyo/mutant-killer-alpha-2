@@ -25,6 +25,8 @@ socketio = SocketIO(app, host=HOST, port=PORT, cors_allowed_origins="*", async_m
 CLONED_REPOS_DIR = os.path.join(os.getcwd(), "cloned_repos")  # Directory to store cloned repos
 GENERATED_ZIPS_DIR = os.path.join(os.getcwd(), "generated_zips")  # Directory to store cloned repos
 
+MAX_REFINEMENT_ITERATIONS = 2
+
 if not os.path.exists(CLONED_REPOS_DIR):
     os.makedirs(CLONED_REPOS_DIR)
 
@@ -113,6 +115,8 @@ def run_composer_install(local_directory: str) -> None:
     target_composer = os.path.join(local_directory, 'composer.json')
     source_composer_lock = os.path.join(app.root_path, 'composer.lock')
     target_composer_lock = os.path.join(local_directory, 'composer.lock')
+    source_php_unit = os.path.join(app.root_path, 'phpunit.xml')
+    target_php_unit = os.path.join(local_directory, 'phpunit.xml')
 
     
     vendor_zip_path = os.path.join(app.root_path, 'vendor.zip')
@@ -157,6 +161,10 @@ def run_composer_install(local_directory: str) -> None:
     if os.path.exists(source_composer_lock):
         shutil.copy2(source_composer_lock, target_composer_lock)
 
+    # Copy php_unit.xml file
+    if os.path.exists(source_php_unit):
+        shutil.copy2(source_php_unit, target_php_unit)
+
     send_websocket_notification("Running `composer install`...")
     composer_cmd = ["composer", "install", "--no-interaction", "--prefer-dist", "--no-plugins"]
     result = subprocess.run(composer_cmd, cwd=local_directory, text=True, shell=True)
@@ -164,13 +172,88 @@ def run_composer_install(local_directory: str) -> None:
     if result.returncode != 0:
         raise RuntimeError(f"Composer install failed:\n{result.stderr}")
 
+def run_php_testing(local_directory: str) -> None:
+    """Runs PHPUnit tests."""
+    send_websocket_notification("Running PHPUnit tests...")
+
+    main_command = "vendor/bin/phpunit"
+    # if machine is windows then adjust the command
+    if os.name == 'nt':
+        main_command = "vendor\\bin\\phpunit"
+    try:
+        result = subprocess.run([
+            main_command,
+            "--fail-on-skipped",
+            "--coverage-xml",
+            ".mutagen-tmp/coverage",
+            "--log-junit",
+            ".mutagen-tmp/junit.xml"
+            ],
+            cwd=local_directory,
+            text=True,
+            timeout=600,
+            shell=True,
+            capture_output=True
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("PHPUnit tests timed out after 10 minutes.")
+    
+
+    result_out = result.stdout.strip()
+
+    send_websocket_notification("PHPUnit tests completed.")
+    # find errors and errors in the output, start with 'errors' and ends with second '--
+    errors_index = result_out.find('errors')
+    # find all occurencies of --
+    errors_end_index = result_out.find('--', errors_index + 1)
+
+    failures_index = result_out.find('failures')
+    failures_end_index = result_out.find('--', failures_index + 1)
+
+    
+
+    return result_out[errors_index: errors_end_index].strip() + '\n' + result_out[failures_index: failures_end_index].strip() if errors_index != -1 and failures_index != -1 else result_out.strip()
+
+def generate_tests(local_directory: str) -> Dict[str, Any]:
+    for i in range(MAX_REFINEMENT_ITERATIONS):
+        error = ''
+        try:
+            error += run_php_testing(local_directory)
+            send_websocket_notification("Mutation testing completed.")
+        except Exception as e:
+            error += "error in phpunit: " + str(e) + '\n'
+            send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
+
+        try:
+            run_mutation_testing(local_directory)
+        except Exception as e:
+            error += "error in mutation testing: " + str(e) + '\n'
+            send_websocket_notification("Mutation testing failed, skipping test generation.")
+
+        first_infection_result = {}
+        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
+            first_infection_result = json.load(f)
+        infection_result_map = group_by_original_file_path(first_infection_result, local_directory)
+
+        try: 
+            model = model_factory(MODEL, infection_result_map)
+            scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model, error)
+        except RuntimeError as e:
+            print(e)
+            send_websocket_notification("Failed to generate tests using LLM, skipping.")
+    return first_infection_result
+    
+
 def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
     send_websocket_notification("Running mutation testing via Infection...")
-
+    main_command = "vendor/bin/infection"
+    # if machine is windows then adjust the command
+    if os.name == 'nt':
+        main_command = "vendor\\bin\\infection"
     try:
         result = subprocess.run(
-            ["vendor\\bin\\infection"],
+            [main_command],
             cwd=local_directory,
             text=True,
             timeout=600,
@@ -179,15 +262,11 @@ def run_mutation_testing(local_directory: str) -> None:
     except subprocess.TimeoutExpired:
         raise RuntimeError("Mutation testing timed out after 10 minutes.")
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Infection failed:\n{result.stderr}")
-
-    html_report = os.path.join(local_directory, "infection.html")
-    if not os.path.exists(html_report):
-        raise RuntimeError("Mutation report (infection.html) not found after running Infection.")
+    # html_report = os.path.join(local_directory, "infection.html")
+    # if not os.path.exists(html_report):
+    #     raise RuntimeError("Mutation report (infection.html) not found after running Infection.")
     
-    html = open(html_report, "r").read()
-    send_websocket_notification(html)
+    # html = open(html_report, "r").read()
     send_websocket_notification("Mutation testing completed and report generated.")
 
 
@@ -250,32 +329,22 @@ def mutation_test():
         send_websocket_notification(f"project is php")
 
 
-        if is_php:
-            run_composer_install(local_directory)
-            send_websocket_notification("Composer install completed.")
-            run_mutation_testing(local_directory)
-            send_websocket_notification("Mutation testing completed.")
-        else:
+        if not is_php:
             send_websocket_notification("Not a PHP project, skipping mutation testing.")
             return jsonify({'status': 'Not a PHP project'}), 400
+        
+        run_composer_install(local_directory)
+        send_websocket_notification("Composer install completed.")
 
-        first_infection_result = {}
-        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
-            first_infection_result = json.load(f)
-        infection_result_map = group_by_original_file_path(first_infection_result, local_directory)
+        first_infection_result = generate_tests(local_directory)
 
-        # model = model_factory(MODEL, infection_result_map)
-        # scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model)
+        try:
+            run_php_testing(local_directory)
 
-        # Placeholder for analyzing unkilled mutants
-        # In a real implementation, you'd parse the output of Infection
-        # and extract information about unkilled mutants.
-        # For now, we'll just simulate it.
-        # unkilled_mutants = analyze_unkilled_mutants(local_directory)
-        # send_websocket_notification(f"Unkilled mutants: {unkilled_mutants}")
+            run_mutation_testing(local_directory)
+        except RuntimeError as e:
+            send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
 
-
-        run_mutation_testing(local_directory)
         final_infection_result = {}
         with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
             final_infection_result = json.load(f)

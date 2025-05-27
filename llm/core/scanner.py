@@ -1,5 +1,5 @@
 
-def scan_and_generate_tests(src_dir, output_dir, adapter, mode="file"):
+def scan_and_generate_tests(src_dir, output_dir, adapter, itteration_error=None, mode="file"):
     import os
     os.makedirs(output_dir, exist_ok=True)
 
@@ -10,7 +10,7 @@ def scan_and_generate_tests(src_dir, output_dir, adapter, mode="file"):
         filepath = os.path.join(src_dir, filename)
 
         if mode == "file":
-            adapter.generate_test_case_from_file(filepath, output_dir)
+            adapter.generate_test_case_from_file(filepath, output_dir, itteration_error)
         else:
             with open(filepath, "r") as f:
                 source_code = f.read()
