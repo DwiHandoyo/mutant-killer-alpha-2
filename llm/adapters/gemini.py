@@ -53,8 +53,6 @@ class GeminiAdapter(LLMAdapter):
                     previous_test = f.read()
                     PROMPT += f"\n\nBerikut adalah isi test suite sebelumnya\n{previous_test}"
 
-        with open('prompt.txt', "w") as f:
-            f.write(PROMPT)
         response = self.model.generate_content(
             contents=[{"role": "user", "parts": [PROMPT, {"text": php_code}]}]
         )
