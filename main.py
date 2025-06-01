@@ -203,23 +203,22 @@ def run_php_testing(local_directory: str) -> None:
 
     send_websocket_notification("PHPUnit tests completed.")
     # find errors and errors in the output, start with 'errors' and ends with second '--
-    errors_index = result_out.find('errors')
+    errors_index = result_out.find('errors:')
     # find all occurencies of --
     errors_end_index = result_out.find('--', errors_index + 1)
+    error_message = result_out[errors_index: errors_end_index].strip() if errors_index != -1 else ''
 
-    failures_index = result_out.find('failures')
+    failures_index = result_out.find('failures:')
     failures_end_index = result_out.find('--', failures_index + 1)
+    failures_message = result_out[failures_index: failures_end_index].strip() if failures_index != -1 else ''
 
-    
-
-    return result_out[errors_index: errors_end_index].strip() + '\n' + result_out[failures_index: failures_end_index].strip() if errors_index != -1 and failures_index != -1 else result_out.strip()
+    return error_message + '\n' + failures_message
 
 def generate_tests(local_directory: str) -> Dict[str, Any]:
     for i in range(MAX_REFINEMENT_ITERATIONS):
         error = ''
         try:
             error += run_php_testing(local_directory)
-            send_websocket_notification("Mutation testing completed.")
         except Exception as e:
             error += "error in phpunit: " + str(e) + '\n'
             send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")

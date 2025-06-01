@@ -1,5 +1,5 @@
 from llm.base import LLMAdapter
-from llm.core.prompt import get_prompt
+from llm.core.prompt import get_prompt, get_example
 import os
 
 class GeminiAdapter(LLMAdapter):
@@ -19,7 +19,7 @@ class GeminiAdapter(LLMAdapter):
                 return 
         
         if iteration_error:
-            PROMPT += f"\n\nPerhatikan juga error berikut yang terjadi pada iterasi sebelumnya: {iteration_error}"
+            PROMPT += f"\n\nPerhatikan juga error berikut yang terjadi pada iterasi sebelumnya:\n{iteration_error}"
         prompt = (
             PROMPT
         )
@@ -29,8 +29,14 @@ class GeminiAdapter(LLMAdapter):
     def generate_test_case_from_file(self, source_path: str, output_dir: str, iteration_error: str = None) -> str:
         PROMPT = get_prompt()
         sanitized_name = os.path.basename(source_path)
+        filename = os.path.basename(source_path).replace(".php", "Test.php")
+        output_path = os.path.join(output_dir, filename)
+        
         with open(source_path, "r") as f:
             php_code = f.read()
+        
+        if not iteration_error:
+            PROMPT += get_example()
 
         if len(self.infection_result.values()):
             if sanitized_name in self.infection_result:
@@ -40,15 +46,20 @@ class GeminiAdapter(LLMAdapter):
                 return 
 
         if iteration_error:
-            PROMPT += f"\n\nPerhatikan juga error berikut yang terjadi pada iterasi sebelumnya: {iteration_error}"
+            PROMPT += f"\n\nPerhatikan juga error dan failure berikut yang terjadi pada iterasi sebelumnya. Berikut adalah nama file test suite {output_path}. Jika error di bawah ada salah satu dari file tersebut maka ubah test suite agar tidak mengikutsertakan test case ini dengan cara menghapus function/method test yang error agar testing berjalan tanpa error dan failure, abaikan jika tidak.\n{iteration_error}"
+            # check if source_path exists and read the previous output
+            if os.path.exists(output_path):
+                with open(output_path, "r") as f:
+                    previous_test = f.read()
+                    PROMPT += f"\n\nBerikut adalah isi test suite sebelumnya\n{previous_test}"
 
+        with open('prompt.txt', "w") as f:
+            f.write(PROMPT)
         response = self.model.generate_content(
             contents=[{"role": "user", "parts": [PROMPT, {"text": php_code}]}]
         )
 
         response_trim =  trim_response(response.text)
-        filename = os.path.basename(source_path).replace(".php", "Test.php")
-        output_path = os.path.join(output_dir, filename)
         with open(output_path, "w") as out:
             out.write(response_trim)
         return output_path

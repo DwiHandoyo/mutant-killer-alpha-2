@@ -1,4 +1,5 @@
-PROMPT = """Buatkan test case PHPUnit untuk file PHP berikut. Fokus pada pengujian fungsi dan kerentanan File Inclusion. Berikan hasil tanpa penjelasan dan hanya berbentuk code php saja. Silahkan mengacu pada contoh dibawah yaitu CalculatorTest.php dimana code yang di uji terletak pada App/<nama_file>.php
+PROMPT = """Buatkan test case PHPUnit untuk file PHP berikut. Fokus pada pengujian fungsi dan kerentanan File Inclusion dan Open Redirect. Berikan hasil tanpa penjelasan dan hanya berbentuk code php saja."""
+EXAMPLE = """Silahkan mengacu pada contoh dibawah yaitu CalculatorTest.php dimana code yang di uji terletak pada App/<nama_file>.php
 <?php
 
 namespace Tests;
@@ -30,3 +31,5 @@ class CalculatorTest extends TestCase
 
 def get_prompt():
     return PROMPT
+def get_example():
+    return EXAMPLE
