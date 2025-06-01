@@ -3,7 +3,7 @@ import subprocess
 import shutil
 import time
 import zipfile
-import stat
+import re
 import json
 from typing import Any, Dict
 from flask import Flask, request, jsonify, send_file
@@ -172,6 +172,38 @@ def run_composer_install(local_directory: str) -> None:
     if result.returncode != 0:
         raise RuntimeError(f"Composer install failed:\n{result.stderr}")
 
+def parse_phpunit_summary(raw_output: str):
+    # Regex untuk mencari baris ringkasan
+    summary_pattern = re.compile(
+        r"Tests:\s*(\d+),\s*Assertions:\s*(\d+),"
+        r"(?:\s*Failures:\s*(\d+),)?"
+        r"(?:\s*Errors:\s*(\d+),)?"
+        r"(?:\s*Warnings:\s*(\d+),)?"
+        r"(?:\s*Deprecations:\s*(\d+)\.?)?"
+    )
+
+    match = summary_pattern.search(raw_output)
+    if not match:
+        return None
+
+    # Ambil hasil, jika tidak ada maka 0
+    tests = int(match.group(1))
+    assertions = int(match.group(2))
+    failures = int(match.group(3) or 0)
+    errors = int(match.group(4) or 0)
+    warnings = int(match.group(5) or 0)
+    deprecations = int(match.group(6) or 0)
+
+    return {
+        "tests": tests,
+        "assertions": assertions,
+        "failures": failures,
+        "errors": errors,
+        "warnings": warnings,
+        "deprecations": deprecations
+    }
+
+
 def run_php_testing(local_directory: str) -> None:
     """Runs PHPUnit tests."""
     send_websocket_notification("Running PHPUnit tests...")
@@ -211,14 +243,16 @@ def run_php_testing(local_directory: str) -> None:
     failures_index = result_out.find('failures:')
     failures_end_index = result_out.find('--', failures_index + 1)
     failures_message = result_out[failures_index: failures_end_index].strip() if failures_index != -1 else ''
-
-    return error_message + '\n' + failures_message
+    test_summary = parse_phpunit_summary(result_out)
+    return error_message + '\n' + failures_message, test_summary
 
 def generate_tests(local_directory: str) -> Dict[str, Any]:
     for i in range(MAX_REFINEMENT_ITERATIONS):
         error = ''
+        test_report = {}
         try:
-            error += run_php_testing(local_directory)
+            test_error, test_report= run_php_testing(local_directory)
+            error += test_error
         except Exception as e:
             error += "error in phpunit: " + str(e) + '\n'
             send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
@@ -240,7 +274,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
         except RuntimeError as e:
             print(e)
             send_websocket_notification("Failed to generate tests using LLM, skipping.")
-    return first_infection_result
+    return first_infection_result, test_report
     
 
 def run_mutation_testing(local_directory: str) -> None:
@@ -335,10 +369,10 @@ def mutation_test():
         run_composer_install(local_directory)
         send_websocket_notification("Composer install completed.")
 
-        first_infection_result = generate_tests(local_directory)
-
+        first_infection_result, first_test_report = generate_tests(local_directory)
+        
         try:
-            run_php_testing(local_directory)
+            test_error, final_test_report = run_php_testing(local_directory)
 
             run_mutation_testing(local_directory)
         except RuntimeError as e:
@@ -363,6 +397,8 @@ def mutation_test():
 
         # Return the download URL for the zip file
         download_url = f"{HOST}:{PORT}/download/{zip_filename}"
+        send_websocket_notification(f"first test report: {first_test_report}")
+        send_websocket_notification(f"final test report: {final_test_report}")
         return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url, "first_infection_result": first_infection_result, "final_infection_result": final_infection_result}), 200
 
     except RuntimeError as e:
