@@ -203,6 +203,49 @@ def parse_phpunit_summary(raw_output: str):
         "deprecations": deprecations
     }
 
+def parse_infection_failures_and_errors(raw_output: str):
+    """
+    Mengembalikan:
+      - failure_count: int
+      - failure_messages: list[str]
+      - error_count: int
+      - error_messages: list[str]
+    """
+    failure_count = 0
+    failure_messages = ''
+    error_count = 0
+    error_messages = ''
+
+    # Regex blok failure
+    failure_header = re.search(r"There (?:was|were) (\d+) failure", raw_output)
+    if failure_header:
+        failure_count = int(failure_header.group(1))
+        failure_blocks = re.findall(
+            r"\d+\)\s+([^\n]+)\n((?:\s{9,}.*\n)+)", raw_output
+        )
+        for test_name, message_block in failure_blocks:
+            message = test_name.strip() + "\n" + message_block.strip()
+            failure_messages += message
+
+    # Regex blok error
+    error_header = re.search(r"There (?:was|were) (\d+) error", raw_output)
+    if error_header:
+        error_count = int(error_header.group(1))
+        error_blocks = re.findall(
+            r"\d+\)\s+([^\n]+)\n((?:\s{9,}.*\n)+)", raw_output
+        )
+        # Untuk error, filter blok yang mengandung kata 'Error:' pada message_block
+        for test_name, message_block in error_blocks:
+            if 'Error:' in message_block:
+                message = test_name.strip() + "\n" + message_block.strip()
+                error_messages += message
+    infection_report = {
+        "failure_count": failure_count,
+        "error_count": error_count
+        }
+    print(f"failure count: {failure_count}, error count: {error_count}")
+    return error_messages +  failure_messages, infection_report
+
 
 def run_php_testing(local_directory: str) -> None:
     """Runs PHPUnit tests."""
@@ -247,26 +290,29 @@ def run_php_testing(local_directory: str) -> None:
     return error_message + '\n' + failures_message, test_summary
 
 def generate_tests(local_directory: str) -> Dict[str, Any]:
+    first_infection_result, first_test_report, first_infection_report = {}, {}, {}
     for i in range(MAX_REFINEMENT_ITERATIONS):
         error = ''
         test_report = {}
+        infection_report = {}
         try:
             test_error, test_report= run_php_testing(local_directory)
-            error += test_error
+            error += test_error + '\n'
         except Exception as e:
             error += "error in phpunit: " + str(e) + '\n'
             send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
 
         try:
-            run_mutation_testing(local_directory)
+            infection_error, infection_report = run_mutation_testing(local_directory)
+            error += infection_error + '\n'
         except Exception as e:
             error += "error in mutation testing: " + str(e) + '\n'
             send_websocket_notification("Mutation testing failed, skipping test generation.")
 
-        first_infection_result = {}
+        infection_result = {}
         with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
-            first_infection_result = json.load(f)
-        infection_result_map = group_by_original_file_path(first_infection_result, local_directory)
+            infection_result = json.load(f)
+        infection_result_map = group_by_original_file_path(infection_result, local_directory)
 
         try: 
             model = model_factory(MODEL, infection_result_map)
@@ -274,8 +320,42 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
         except RuntimeError as e:
             print(e)
             send_websocket_notification("Failed to generate tests using LLM, skipping.")
-    return first_infection_result, test_report
+        except Exception as e:
+            print(e)
+        if i == 0:
+            first_infection_result = infection_result
+            first_test_report = test_report
+            first_infection_report = infection_report
+
+    #final evaluation
+    try:
+        test_error_final_iteration, _ = run_php_testing(local_directory)
+        print(f"Final test error: {test_error_final_iteration}")
+        error_files = extract_failed_classes(test_error_final_iteration)
+        print(f"Error files to remove: {error_files}")
+
+        ## remove errors files with case insensitive name
+        for error_file in error_files:
+            error_file = error_file.lower()
+            test_files = os.listdir(os.path.join(local_directory, 'tests'))
+            for test_file in test_files:
+                if test_file.lower().startswith(error_file):
+                    test_file_path = os.path.join(local_directory, 'tests', test_file)
+                    print(f"Removing test file: {test_file_path}")
+                    os.remove(test_file_path)
+    except Exception as e:
+        error += "error in phpunit: " + str(e) + '\n'
+        send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
+
+    return first_infection_result, first_test_report, first_infection_report
     
+
+def extract_failed_classes(raw):
+    # Cari semua baris yang sesuai dengan pola failure
+    matches_error = re.findall(r'\d+\)\s+Tests\\([A-Za-z0-9_]+)::', raw)
+    matches_failure = re.findall(r'\d+\)\s+([A-Za-z0-9_]+)::', raw)
+    # Hilangkan duplikat jika ada
+    return list(set(matches_error + matches_failure))
 
 def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
@@ -290,7 +370,8 @@ def run_mutation_testing(local_directory: str) -> None:
             cwd=local_directory,
             text=True,
             timeout=600,
-            shell=True
+            shell=True,
+            capture_output=True
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError("Mutation testing timed out after 10 minutes.")
@@ -300,7 +381,13 @@ def run_mutation_testing(local_directory: str) -> None:
     #     raise RuntimeError("Mutation report (infection.html) not found after running Infection.")
     
     # html = open(html_report, "r").read()
+
+    result_out = result.stdout.strip()
+    print(f"Mutation testing output: {result_out}")
+    error_message, infection_report = parse_infection_failures_and_errors(result_out)
+    print(f"infection report: {infection_report}")
     send_websocket_notification("Mutation testing completed and report generated.")
+    return error_message, infection_report
 
 
 def extract_ast_from_php(directory):
@@ -369,12 +456,12 @@ def mutation_test():
         run_composer_install(local_directory)
         send_websocket_notification("Composer install completed.")
 
-        first_infection_result, first_test_report = generate_tests(local_directory)
+        first_infection_result, first_test_report, first_infection_report = generate_tests(local_directory)
         
         try:
             test_error, final_test_report = run_php_testing(local_directory)
 
-            run_mutation_testing(local_directory)
+            infection_error, final_infection_report = run_mutation_testing(local_directory)
         except RuntimeError as e:
             send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
 
@@ -399,6 +486,8 @@ def mutation_test():
         download_url = f"{HOST}:{PORT}/download/{zip_filename}"
         send_websocket_notification(f"first test report: {first_test_report}")
         send_websocket_notification(f"final test report: {final_test_report}")
+        send_websocket_notification(f"first infection report: {first_infection_report}")
+        send_websocket_notification(f"final infection report: {final_infection_report}")
         return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url, "first_infection_result": first_infection_result, "final_infection_result": final_infection_result}), 200
 
     except RuntimeError as e:
@@ -478,3 +567,26 @@ DEFAULT_INFECTION_JSON5 = {
         "summary": "summary.log"
     }
 }
+
+
+def parse_phpunit_failures(raw_output: str):
+    # Cari jumlah failure
+    failure_count = 0
+    failure_messages = []
+
+    # Regex untuk mendeteksi blok "There was X failure(s):"
+    failure_header = re.search(r"There (?:was|were) (\d+) failure", raw_output)
+    if failure_header:
+        failure_count = int(failure_header.group(1))
+
+        # Regex untuk mengambil setiap blok failure
+        # Blok dimulai dengan angka dan nama test, diikuti pesan hingga baris kosong
+        failure_blocks = re.findall(
+            r"\d+\)\s+([^\n]+)\n((?:\s{9,}.*\n)+)", raw_output
+        )
+        for test_name, message_block in failure_blocks:
+            # Gabungkan dan strip pesan
+            message = test_name.strip() + "\n" + message_block.strip()
+            failure_messages.append(message)
+
+    return failure_count, failure_messages
