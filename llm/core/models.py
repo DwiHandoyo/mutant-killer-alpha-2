@@ -5,7 +5,6 @@ from dotenv import load_dotenv, dotenv_values
 load_dotenv() 
 
 # accessing and printing value
-print(os.getenv("MY_KEY"))
 def model_factory(model_name, infection_result={}):
     if model_name == "chatgpt":
         from openai import OpenAI

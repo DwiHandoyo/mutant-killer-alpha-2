@@ -318,7 +318,6 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             model = model_factory(MODEL, infection_result_map)
             scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model, error)
         except RuntimeError as e:
-            print(e)
             send_websocket_notification("Failed to generate tests using LLM, skipping.")
         except Exception as e:
             print(e)
@@ -330,14 +329,18 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
     #final evaluation
     try:
         test_error_final_iteration, _ = run_php_testing(local_directory)
-        print(f"Final test error: {test_error_final_iteration}")
-        error_files = extract_failed_classes(test_error_final_iteration)
+        infection_error_final_iteration, _ = run_mutation_testing(local_directory)
+        print(f"Test error final iteration: {infection_error_final_iteration}")
+        print(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
+        error_files = extract_failed_classes(test_error_final_iteration + infection_error_final_iteration)
+        test_files = os.listdir(os.path.join(local_directory, 'tests'))
         print(f"Error files to remove: {error_files}")
-
+        print(f"Removing test files for errors: {error_files}")
+        print(f"Test files: {test_files}")
+        send_websocket_notification("Removing test files for errors: " + str(error_files))
         ## remove errors files with case insensitive name
         for error_file in error_files:
             error_file = error_file.lower()
-            test_files = os.listdir(os.path.join(local_directory, 'tests'))
             for test_file in test_files:
                 if test_file.lower().startswith(error_file):
                     test_file_path = os.path.join(local_directory, 'tests', test_file)
@@ -351,11 +354,10 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
     
 
 def extract_failed_classes(raw):
-    # Cari semua baris yang sesuai dengan pola failure
     matches_error = re.findall(r'\d+\)\s+Tests\\([A-Za-z0-9_]+)::', raw)
     matches_failure = re.findall(r'\d+\)\s+([A-Za-z0-9_]+)::', raw)
-    # Hilangkan duplikat jika ada
-    return list(set(matches_error + matches_failure))
+    matches_star = re.findall(r'\*\s+Tests\\([A-Za-z0-9_]+)::', raw)
+    return list(set(matches_error + matches_failure + matches_star))
 
 def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
@@ -386,6 +388,7 @@ def run_mutation_testing(local_directory: str) -> None:
     print(f"Mutation testing output: {result_out}")
     error_message, infection_report = parse_infection_failures_and_errors(result_out)
     print(f"infection report: {infection_report}")
+    print(f"error message: {error_message}")
     send_websocket_notification("Mutation testing completed and report generated.")
     return error_message, infection_report
 
@@ -419,7 +422,7 @@ def extract_ast_from_php(directory):
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    filepath = os.path.join(app.root_path, filename)
+    filepath = os.path.join(GENERATED_ZIPS_DIR, filename)
     return send_file(filepath, as_attachment=True)
 
 @app.route('/mutation-test', methods=['POST'])
@@ -483,12 +486,21 @@ def mutation_test():
                             zipf.write(file_path, arcname)
 
         # Return the download URL for the zip file
-        download_url = f"{HOST}:{PORT}/download/{zip_filename}"
+        download_url = request.host_url.rstrip('/') + f"/download/{zip_filename}"
         send_websocket_notification(f"first test report: {first_test_report}")
         send_websocket_notification(f"final test report: {final_test_report}")
         send_websocket_notification(f"first infection report: {first_infection_report}")
         send_websocket_notification(f"final infection report: {final_infection_report}")
-        return jsonify({'status': 'Mutation testing completed successfully.', 'download_url': download_url, "first_infection_result": first_infection_result, "final_infection_result": final_infection_result}), 200
+        return jsonify({
+                        'status': 'Mutation testing completed successfully.',
+                        'download_url': download_url,
+                        "first_infection_result": first_infection_result,
+                        "final_infection_result": final_infection_result,
+                        "first_test_report": first_test_report,
+                        "final_test_report": final_test_report,
+                        "first_infection_report": first_infection_report,
+                        "final_infection_report": final_infection_report
+                        }), 200
 
     except RuntimeError as e:
         send_websocket_notification(f"Error: {e}")
