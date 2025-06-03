@@ -356,10 +356,14 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
     
 
 def extract_failed_classes(raw):
-    matches_error = re.findall(r'\d+\)\s+Tests\\([A-Za-z0-9_]+)::', raw)
-    matches_failure = re.findall(r'\d+\)\s+([A-Za-z0-9_]+)::', raw)
-    matches_star = re.findall(r'\*\s+Tests\\([A-Za-z0-9_]+)::', raw)
-    return list(set(matches_error + matches_failure + matches_star))
+    # Match patterns like '1) SomeNamespace\ClassName::', '* SomeNamespace\ClassName::', etc.
+    matches_error = re.findall(r'\d+\)\s+([A-Za-z0-9_\\]+)::', raw)
+    matches_star = re.findall(r'\*\s+([A-Za-z0-9_\\]+)::', raw)
+    # Extract only the class name (last part after backslash)
+    def get_class_name(s):
+        return s.split('\\')[-1]
+    all_matches = matches_error + matches_star
+    return list(set(get_class_name(m) for m in all_matches))
 
 def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
