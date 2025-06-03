@@ -6,7 +6,7 @@ import zipfile
 import re
 import json
 from typing import Any, Dict
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_socketio import SocketIO
 from flask_cors import CORS
 from llm.core.scanner import scan_and_generate_tests
@@ -30,6 +30,8 @@ MAX_REFINEMENT_ITERATIONS = 2
 if not os.path.exists(CLONED_REPOS_DIR):
     os.makedirs(CLONED_REPOS_DIR)
 
+if not os.path.exists(GENERATED_ZIPS_DIR):
+    os.makedirs(GENERATED_ZIPS_DIR)
 
 def get_repo_path(repo_name: str) -> str:
     """Gets the full path to a cloned repository."""
@@ -521,6 +523,11 @@ def send_websocket_notification(message: str) -> None:
     """Sends a notification to the client via WebSocket."""
     print(f"Sending WebSocket notification: {message}")
     socketio.emit('notification', {'message': message})
+
+# Serve index.html at root
+@app.route('/')
+def serve_index():
+    return send_from_directory('static', 'index.html')
 
 
 if __name__ == "__main__":

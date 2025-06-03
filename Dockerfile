@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install system dependencies for PHP and Composer
 RUN apt-get update && apt-get install -y \
-    php-cli php-mbstring git unzip curl && \
+    php-cli php-mbstring php-xml git unzip curl && \
     apt-get clean
 
 # Install Composer
@@ -21,8 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . /app/
 
-# Expose Flask and PHP ports
-EXPOSE 5000 9000
+# Expose Flask port only (frontend is served by Flask)
+EXPOSE 5000
 
 # Command to run Flask app
 CMD ["python", "main.py"]
