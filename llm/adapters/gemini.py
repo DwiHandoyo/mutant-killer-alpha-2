@@ -42,8 +42,6 @@ class GeminiAdapter(LLMAdapter):
             if sanitized_name in self.infection_result:
                 PROMPT += f"\nperhatikan infection result berikut pada 'escaped' dan 'uncovered'. Escaped adalah mutant yang tidak berhasil ter-kill dan uncovered adalah yang tidak ada test casenya. Pada tiap element di escaped dan uncovered ada startLine yang menandakan line yang dilakukan mutation"
                 PROMPT += f"\n\nInfection result: {self.infection_result[sanitized_name]}"
-            else:
-                return 
 
         if iteration_error:
             PROMPT += f"\n\nPerhatikan juga error dan failure berikut yang terjadi pada iterasi sebelumnya. Berikut adalah nama file test suite {output_path}. Jika error di bawah ada salah satu dari file tersebut maka ubah test suite agar tidak mengikutsertakan test case ini dengan cara menghapus function/method test yang error agar testing berjalan tanpa error dan failure, abaikan jika tidak.\n{iteration_error}"
@@ -60,6 +58,7 @@ class GeminiAdapter(LLMAdapter):
         response_trim =  trim_response(response.text)
         with open(output_path, "w") as out:
             out.write(response_trim)
+
         return output_path
 
 def trim_response(response):

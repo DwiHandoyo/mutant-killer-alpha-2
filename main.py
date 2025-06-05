@@ -316,28 +316,32 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             infection_result = json.load(f)
         infection_result_map = group_by_original_file_path(infection_result, local_directory)
 
-        try: 
-            model = model_factory(MODEL, infection_result_map)
-            scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model, error)
-        except RuntimeError as e:
-            send_websocket_notification("Failed to generate tests using LLM, skipping.")
-        except Exception as e:
-            print(e)
+        
+        error_files = extract_failed_classes(test_error + infection_error)
+
+
         if i == 0:
             first_infection_result = infection_result
             first_test_report = test_report
             first_infection_report = infection_report
+            error = None
+        
+        try: 
+            model = model_factory(MODEL, infection_result_map)
+            scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model, error, error_files)
+        except RuntimeError as e:
+            send_websocket_notification("Failed to generate tests using LLM, skipping.")
+        except Exception as e:
+            print(e)
 
     #final evaluation
     try:
         test_error_final_iteration, _ = run_php_testing(local_directory)
         infection_error_final_iteration, _ = run_mutation_testing(local_directory)
-        print(f"Test error final iteration: {infection_error_final_iteration}")
         print(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
         error_files = extract_failed_classes(test_error_final_iteration + infection_error_final_iteration)
         test_files = os.listdir(os.path.join(local_directory, 'tests'))
         print(f"Error files to remove: {error_files}")
-        print(f"Removing test files for errors: {error_files}")
         print(f"Test files: {test_files}")
         send_websocket_notification("Removing test files for errors: " + str(error_files))
         ## remove errors files with case insensitive name
