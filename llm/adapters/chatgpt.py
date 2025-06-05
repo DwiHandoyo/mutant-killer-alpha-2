@@ -33,7 +33,7 @@ class ChatGPTAdapter(LLMAdapter):
         )
         return response.choices[0].message.content
 
-    def generate_test_case_from_file(self, source_path: str, output_dir: str) -> str:
+    def generate_test_case_from_file(self, source_path: str, output_dir: str, iteration_error: str = None) -> str:
         PROMPT = get_prompt()
         sanitized_name = os.path.basename(source_path)
         print(f"Sanitized name: {self.infection_result}")
@@ -64,6 +64,8 @@ class ChatGPTAdapter(LLMAdapter):
                 break
 
         messages = self.client.beta.threads.messages.list(thread_id=thread.id)
+        print("PESAN")
+        print(messages)
         for message in reversed(messages.data):
             for file_id in message.file_ids:
                 result = self.client.files.retrieve_content(file_id)
