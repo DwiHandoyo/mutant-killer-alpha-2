@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SecureGen - Scan, Detect, and Secure Your Code</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f6fafd;
+    }
+    .navbar {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .navbar .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #22223b;
+      letter-spacing: -1px;
+    }
+    .navbar .nav {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      margin-left: 32px;
+      flex: 1;
+    }
+    .navbar .nav a, .navbar .nav button {
+      background: none;
+      border: none;
+      color: #22223b;
+      font-size: 1rem;
+      font-weight: 300;
+      cursor: pointer;
+      padding: 0 8px;
+      transition: color 0.2s;
+      text-decoration: none;
+    }
+    .navbar .nav a:hover, .navbar .nav button:hover {
+      color: #1e40af;
+    }
+    .navbar .nav .dropdown {
+      position: relative;
+      tabindex: 0;
+    }
+    .navbar .nav .dropdown-content {
+      display: none;
+      position: absolute;
+      top: 36px;
+      left: 0;
+      background: #fff;
+      min-width: 180px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      z-index: 100;
+      padding: 8px 0;
+    }
+    .navbar .nav .dropdown:focus-within .dropdown-content,
+    .navbar .nav .dropdown:hover .dropdown-content {
+      display: block;
+    }
+    .navbar .nav .dropdown-content a {
+      display: block;
+      padding: 10px 24px;
+      color: #22223b;
+      text-decoration: none;
+      font-size: 1rem;
+      background: none;
+      border: none;
+      text-align: left;
+      transition: background 0.2s;
+    }
+    .navbar .nav .dropdown-content a:hover {
+      background: #f3f4f6;
+      color: #111;
+    }
+    .navbar .nav button, .navbar .nav .scan-btn, .hero .try-btn, .features-form button, .cta-section .cta-btn {
+      background: #111 !important;
+      color: #fff !important;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 300;
+      font-size: 1em;
+      border: none;
+      cursor: pointer;
+      margin-top: 0;
+      transition: background 0.2s;
+    }
+    .navbar .nav button:hover, .navbar .nav .scan-btn:hover, .hero .try-btn:hover, .features-form button:hover, .cta-section .cta-btn:hover {
+      background: #1e40af !important;
+    }
+    .hero {
+      background: linear-gradient(120deg, #a8dadc 0%, #7ec8d6 100%);
+      padding: 56px 0 40px 0;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #22223b;
+      margin-bottom: 16px;
+    }
+    .hero p {
+      color: #22223b;
+      font-size: 1.2rem;
+      margin-bottom: 32px;
+    }
+    .hero .try-btn {
+      background: #111;
+      color: #fff;
+      border-radius: 999px;
+      padding: 12px 40px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      margin-top: 12px;
+      transition: background 0.2s;
+    }
+    .hero .try-btn:hover {
+      background: #1e40af;
+    }
+    .how-section {
+      background: #fff;
+      padding: 36px 0 24px 0;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .how-section h3 {
+      color: #22223b;
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .steps {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 64px;
+      margin: 0 auto;
+      max-width: 1100px;
+      flex-wrap: wrap;
+    }
+    .steps .icon {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    .features-section {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 32px;
+      background: #b2e0e6;
+      padding: 36px 0 36px 0;
+    }
+    .features-list {
+      flex: 1 1 0;
+      max-width: 340px;
+      margin-left: 40px;
+      color: #22223b;
+      font-size: 1.1rem;
+    }
+    .features-list ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .features-list li {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .features-list li .check {
+      color: #059669;
+      font-size: 1.2em;
+    }
+    .features-form {
+      flex: 1 1 0;
+      max-width: 420px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 24px 24px 18px 24px;
+      margin-right: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .features-form textarea {
+      width: 100%;
+      min-height: 70px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 1em;
+      margin-bottom: 12px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .features-form button {
+      align-self: flex-end;
+      background: #111;
+      color: #fff;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 600;
+      font-size: 1em;
+      border: none;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+    .features-form button:hover {
+      background: #1e40af;
+    }
+    .features-form .form-link {
+      font-size: 0.95em;
+      color: #1e40af;
+      margin-bottom: 8px;
+      text-align: left;
+      text-decoration: underline;
+      cursor: pointer;
+      display: inline-block;
+    }
+    .testimonial {
+      text-align: center;
+      font-size: 1.2rem;
+      color: #22223b;
+      margin: 48px 0 24px 0;
+    }
+    .testimonial .author {
+      font-size: 1rem;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+    .cta-section {
+      background: #f3f4f6;
+      text-align: center;
+      padding: 36px 0 24px 0;
+      margin-top: 32px;
+    }
+    .cta-section .cta-btn {
+      background: #111;
+      color: #fff;
+      border-radius: 999px;
+      padding: 12px 40px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      margin-top: 12px;
+      transition: background 0.2s;
+    }
+    .cta-section .cta-btn:hover {
+      background: #1e40af;
+    }
+    .footer {
+      background: #f6fafd;
+      color: #6b7280;
+      font-size: 0.95em;
+      text-align: left;
+      padding: 18px 32px 12px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 32px;
+    }
+    .footer a {
+      color: #1e40af;
+      text-decoration: underline;
+      margin-left: 18px;
+    }
+    @media (max-width: 900px) {
+      .features-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+      }
+      .features-list, .features-form {
+        margin: 0 0 24px 0;
+        max-width: 100%;
+      }
+      .features-form {
+        padding: 18px 8px 12px 8px;
+      }
+    }
+    @media (max-width: 600px) {
+      .navbar, .footer {
+        padding: 0 10px;
+      }
+      .container {
+        padding: 12px 2vw 12px 2vw;
+      }
+      .hero h1 {
+        font-size: 1.5rem;
+      }
+      .steps {
+        flex-direction: column;
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <span class="logo">SecureGen</span>
+    <div class="nav" style="flex:1; display:flex; align-items:center; gap:32px; margin-left:32px;">
+      <a href="#" onclick="return false;">Home</a>
+      <div class="dropdown" tabindex="0" style="position:relative;">
+        <div style="background: #fff; font-size:1.1rem; font-weight:500; border-radius:999px;  padding:8px 32px; cursor:pointer;">Products &#9662;</div>
+        <div class="dropdown-content" style="left:0;right:auto;">
+          <a href="#" onclick="return false;">Directory Traversal</a>
+          <a href="#" onclick="return false;">CSRF</a>
+          <a href="/scan">File Inclusion</a>
+        </div>
+      </div>
+      <a href="#" onclick="return false;">About Us</a>
+    </div>
+    <button class="scan-btn" style="background:#111;color:#fff;font-size:1.1rem;padding:8px 32px;min-width:160px;border-radius:999px;border:1px solid #e5e7eb;box-shadow:none;font-weight:600;transition:background 0.2s;" onclick="window.location.href='/scan'">Scan My Repo</button>
+  </div>
+  <div class="hero">
+    <h1>Scan, Detect, and Secure Your Code</h1>
+    <p>SecureGen automatically detects vulnerabilities in your Git repositories. Fast. Accurate. Actionable.</p>
+    <button class="try-btn" onclick="window.location.href='/scan'">Try Now</button>
+  </div>
+  <div class="how-section" style="background:#fff; padding:36px 0 24px 0; border-bottom:1px solid #e5e7eb;">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px;">
+      <span style="font-size:2rem;color:#6b7280;font-weight:400;">🧪 How We Detect Vulnerabilities</span>
+    </div>
+    <div style="display:flex;justify-content:center;align-items:flex-start;gap:64px;max-width:1100px;margin:0 auto;">
+      <div style="font-size:1.35rem;font-weight:600;text-align:center;">1. Paste your Git repo</div>
+      <div style="font-size:1.35rem;font-weight:600;text-align:center;">2. Detect vulnerabilities
+        <div style="font-size:1.1rem;font-weight:400;color:#6b7280;margin-top:8px;">Directory Traversal, CSRF, File Inclusion</div>
+      </div>
+      <div style="font-size:1.35rem;font-weight:600;text-align:center;">3. Generate test cases</div>
+    </div>
+  </div>
+  <div class="features-section">
+    <div class="features-list">
+      <h4>Why SecureGen?</h4>
+      <ul>
+        <li><span class="check">🔍</span> AI-based Vulnerability Detection</li>
+        <li><span class="check">⚡</span> Real-Time MSI Scoring</li>
+        <li><span class="check">🧪</span> Mutation-based Test Case Generation</li>
+        <li><span class="check">🔄</span> Socket.IO Integration for Instant Results</li>
+      </ul>
+    </div>
+    <form class="features-form" onsubmit="return false;">
+      <textarea placeholder="Paste your Git repository URL" disabled></textarea>
+      <a class="form-link" href="#" onclick="return false;">Go to Full Illustration &rarr;</a>
+      <button onclick="window.location.href='/scan'">Scan</button>
+    </form>
+  </div>
+  <div class="testimonial">
+    <div>“SecureGen cut down our security review time by 50%”</div>
+    <div class="author">— PPTKelompok3</div>
+  </div>
+  <div class="cta-section">
+    <div style="font-size:1.2rem; margin-bottom:12px;">Ready to secure your code?</div>
+    <div style="color:#6b7280; margin-bottom:18px;">Try SecureGen and find vulnerabilities before attackers do.</div>
+    <button class="cta-btn" onclick="window.location.href='/scan'">Scan My Repo</button>
+  </div>
+  <div class="footer">
+    <span>© 2025 SecureGen</span>
+    <span>
+      <a href="#" onclick="return false;">About Us</a>
+      <a href="#" onclick="return false;">GitLab</a>
+    </span>
+  </div>
+</body>
+</html>

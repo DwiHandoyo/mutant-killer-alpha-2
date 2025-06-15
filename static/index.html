@@ -9,12 +9,12 @@
   <style>
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
-      background: #f6f8fa;
+      background: #e5e7eb;
       margin: 0;
       padding: 0;
     }
     .container {
-      max-width: 700px;
+      max-width: 1100px;
       margin: 40px auto;
       background: #fff;
       border-radius: 10px;
@@ -22,30 +22,33 @@
       padding: 32px 40px 24px 40px;
     }
     h1 {
-      text-align: center;
-      color: #2d3a4b;
-      margin-bottom: 24px;
+      text-align: left;
+      color: #22223b;
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 32px;
     }
     label {
-      font-weight: 500;
-      color: #2d3a4b;
+      font-weight: 600;
+      color: #22223b;
     }
     input[type="text"] {
-      width: 80%;
+      width: 70%;
+      max-width: 700px;
       padding: 8px 12px;
-      margin: 8px 0 16px 0;
+      margin-bottom: 12px;
       border: 1px solid #d1d5db;
       border-radius: 5px;
       font-size: 1em;
     }
     button {
-      background: #2563eb;
+      background: #111;
       color: #fff;
       border: none;
-      border-radius: 5px;
-      padding: 10px 18px;
-      margin: 0 8px 12px 0;
-      font-size: 1em;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 600;
+      min-width: 120px;
       cursor: pointer;
       transition: background 0.2s;
     }
@@ -68,9 +71,24 @@
       color: #22223b;
       overflow-y: auto;
     }
+    /* Update download-btn to match other buttons */
     .download-btn {
       background: #059669;
-      margin-top: 10px;
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 600;
+      min-width: 120px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 1em;
+      height: 40px;
+      display: inline-block;
+      margin-top: 0;
+      margin-left: 0;
+      margin-right: 0;
+      float: none;
     }
     .download-btn:hover {
       background: #047857;
@@ -87,19 +105,90 @@
       border-radius: 8px;
       padding: 16px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .alert {
+      background: #a7c7b7;
+      color: #1b4332;
+      border: 0;
+      font-weight: 500;
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 5px;
+    }
+    .mb-4 {
+      margin-bottom: 1.5rem;
+    }
+    .p-3 {
+      padding: 1rem;
+    }
+    .border {
+      border: 1px solid #d1d5db;
+    }
+    .rounded {
+      border-radius: 0.375rem;
+    }
+    .bg-white {
+      background-color: #fff;
+    }
+    .shadow-sm {
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .fw-bold {
+      font-weight: 700;
+    }
+    .text-muted {
+      color: #6b7280;
+    }
+    /* Custom styles for output messages */
+    .output-message {
+      padding: 7px 12px;
+      border-radius: 5px;
+      margin: 0 0 2px 0;
+      font-family: inherit;
+      font-size: 1em;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid #e5e7eb;
+    }
+    .output-message.ws {
+      background: #e0f2fe;
+      border-color: #38bdf8;
+      color: #0369a1;
+    }
+    .output-message.default {
+      background: #f3f4f6;
+      color: #22223b;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Mutant Killer Alpha</h1>
-    <label for="repositoryUrl">Repository URL:</label><br>
-    <input type="text" id="repositoryUrl" placeholder="Enter repository URL"><br>
-    <button id="runMutationTest">Run Mutation Test</button>
-    <button id="clearOutput">Clear Output</button>
-    <div class="section-title">Output:</div>
-    <textarea id="output" rows="12" readonly></textarea>
-    <div id="downloadArea"></div>
+    <div style="margin-bottom:24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;">
+      <div style="flex:1 1 auto;">
+        <label for="repositoryUrl">Git Repository URL</label><br>
+        <input type="text" id="repositoryUrl" placeholder="https://..." /><br>
+        <div style="margin-top:12px; display: flex; gap: 12px;">
+          <button id="runMutationTest">Generate</button>
+          <button id="clearOutput">Clear Output</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: flex-end;">
+        <div id="downloadArea" style="margin:0; padding:0;"></div>
+      </div>
+    </div>
+    <div id="statusArea"></div>
+    <div id="summaryArea"></div>
+    <div id="mutationArea"></div>
+    <div id="vulnArea"></div>
+    <!-- --- Output Area: clearer per-line display --- -->
+    <div id="outputArea" style="max-width:2250px;width:90%;margin:24px 0 0 0;text-align:left;">
+      <div class="section-title">Log Output:</div>
+      <div id="output" style="width:90%;min-height:220px;max-height:350px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:16px;font-family:'Fira Mono','Consolas',monospace;font-size:1em;color:#22223b;resize:vertical;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow-y:auto;white-space:pre-wrap;word-break:break-word;margin-bottom:18px;display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
     <div id="chartContainer">
       <canvas id="mutationChart" height="120"></canvas>
       <div style="height:24px"></div>
@@ -115,18 +204,94 @@
     const ctx = document.getElementById('mutationChart').getContext('2d');
     let mutationChart = null;
 
-    function appendToOutput(message) {
-      output.value += message + "\n";
+    function appendToOutput(message, type = 'default') {
+      const output = document.getElementById("output");
+      const msgDiv = document.createElement('div');
+      msgDiv.textContent = message;
+      msgDiv.style.padding = '7px 12px';
+      msgDiv.style.borderRadius = '5px';
+      msgDiv.style.margin = '0 0 2px 0';
+      msgDiv.style.fontFamily = 'inherit';
+      msgDiv.style.fontSize = '1em';
+      msgDiv.style.whiteSpace = 'pre-wrap';
+      msgDiv.style.wordBreak = 'break-word';
+      msgDiv.style.border = '1px solid #e5e7eb';
+      if (type === 'ws') {
+        msgDiv.style.background = '#e0f2fe';
+        msgDiv.style.borderColor = '#38bdf8';
+        msgDiv.style.color = '#0369a1';
+      } else {
+        msgDiv.style.background = '#f3f4f6';
+        msgDiv.style.color = '#22223b';
+      }
+      output.appendChild(msgDiv);
       output.scrollTop = output.scrollHeight;
     }
 
     clearButton.addEventListener("click", function() {
-      output.value = "";
+      output.innerHTML = "";
       downloadArea.innerHTML = "";
       if (mutationChart) {
         mutationChart.destroy();
       }
     });
+
+    function showStatusSuccess(msg) {
+      document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
+    }
+    function showSummary(data) {
+      if (!data.summary) return;
+      const s = data.summary;
+      document.getElementById('summaryArea').innerHTML = `
+        <div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+          <h5 class='fw-bold mb-2'>📁 Repository Info</h5>
+          <p><strong>Path:</strong> ${s.repository.path}</p>
+          <p><strong>Total Vulnerabilities:</strong> ${s.vulnerabilities.total}</p>
+          <p><strong>Total Files Affected:</strong> ${s.vulnerabilities.files}</p>
+        </div>`;
+    }
+    function showMutation(data) {
+      if (!data.mutationAnalysis) return;
+      const m = data.mutationAnalysis;
+      document.getElementById('mutationArea').innerHTML = `
+        <div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+          <h5 class='fw-bold mb-2'>🧬 Mutation Testing Summary</h5>
+          <p><strong>Initial MSI:</strong> ${m.initial.score}%</p>
+          <p><strong>Final MSI:</strong> ${m.final.score}%</p>
+          <p><strong>Total Mutants:</strong> ${m.final.total}</p>
+          <p><strong>Killed:</strong> ${m.final.killed}</p>
+          <p><strong>Escaped:</strong> ${m.final.escaped}</p>
+          <p><strong>Improvement:</strong> ${m.improvement.score}%</p>
+        </div>`;
+    }
+    function showVuln(data) {
+      if (!data.vulnerabilities) return;
+      const v = data.vulnerabilities;
+      let html = `<div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+        <h5 class='fw-bold mb-2'>🔍 Heuristic Vulnerability Summary</h5>
+        <p><strong>Total Detected:</strong> ${v.totalVulnerabilities}</p>`;
+      if (v.details && v.details.length > 0) {
+        html += `<ul class='mb-0'>` + v.details.map(x => `<li>${x.message}</li>`).join('') + `</ul>`;
+      } else {
+        html += `<p class='text-muted'>No vulnerabilities found.</p>`;
+      }
+      html += `</div>`;
+      document.getElementById('vulnArea').innerHTML = html;
+    }
+
+    function renderKeyValue(obj, indent = 0) {
+      if (typeof obj !== 'object' || obj === null) return `<span>${obj}</span>`;
+      let html = '';
+      const pad = '&nbsp;'.repeat(indent * 2);
+      for (const key in obj) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+          html += `${pad}<b>${key}:</b><br>` + renderKeyValue(obj[key], indent + 1);
+        } else {
+          html += `${pad}<b>${key}:</b> <span>${obj[key]}</span><br>`;
+        }
+      }
+      return html;
+    }
 
     runMutationTestButton.addEventListener("click", function() {
       const repositoryUrl = document.getElementById("repositoryUrl").value;
@@ -162,21 +327,25 @@
         })();
         let html = '';
         if (data.first_test_report) {
-          html += `<b>First Test Report:</b> <pre>${JSON.stringify(data.first_test_report, null, 2)}</pre>`;
+          html += `<b>First Test Report:</b><br>${renderKeyValue(data.first_test_report)}<br>`;
         }
         if (data.final_test_report) {
-          html += `<b>Final Test Report:</b> <pre>${JSON.stringify(data.final_test_report, null, 2)}</pre>`;
+          html += `<b>Final Test Report:</b><br>${renderKeyValue(data.final_test_report)}<br>`;
         }
         if (data.first_infection_report) {
-          html += `<b>First Infection Report:</b> <pre>${JSON.stringify(data.first_infection_report, null, 2)}</pre>`;
+          html += `<b>First Infection Report:</b><br>${renderKeyValue(data.first_infection_report)}<br>`;
         }
         if (data.final_infection_report) {
-          html += `<b>Final Infection Report:</b> <pre>${JSON.stringify(data.final_infection_report, null, 2)}</pre>`;
+          html += `<b>Final Infection Report:</b><br>${renderKeyValue(data.final_infection_report)}<br>`;
         }
         reportArea.innerHTML = html;
 
+        showStatusSuccess('✅ Deteksi berhasil! Silakan download testcases.');
+        showSummary(data);
+        showMutation(data);
+        showVuln(data);
+
         if (data.download_url) {
-          appendToOutput("Mutation test completed! Downloading zip file...");
           const downloadButton = document.createElement("button");
           downloadButton.textContent = "Download Repository Zip";
           downloadButton.className = "download-btn";
@@ -339,13 +508,14 @@
     // WebSocket (Socket.IO) connection
     const socket = io('ws://127.0.0.1:5000');
     socket.on('connect', function() {
+      appendToOutput('WebSocket connected.', 'ws');
       socket.emit('my_event', {data: 'I\'m connected!'});
     });
     socket.on('notification', function (event) {
-      appendToOutput(event.message);
+      appendToOutput(event.message, 'ws');
     });
     socket.on('close', function () {
-      appendToOutput('WebSocket disconnected.');
+      appendToOutput('WebSocket disconnected.', 'ws');
     });
   </script>
 </body>
