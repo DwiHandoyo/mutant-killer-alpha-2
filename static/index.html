@@ -293,11 +293,20 @@
       return html;
     }
 
+    // Get backend host dynamically for fetch and socket.io
+    function getBackendHost() {
+      // Use window.location.hostname to always connect to the same host as the frontend
+      const host = window.location.hostname;
+      const port = 5000; // Change if your backend uses a different port
+      return `${host}:${port}`;
+    }
+
     runMutationTestButton.addEventListener("click", function() {
       const repositoryUrl = document.getElementById("repositoryUrl").value;
-      const websocketEndpoint = "ws://127.0.0.1:5000";
+      const backendHost = getBackendHost();
+      const websocketEndpoint = `ws://${backendHost}`;
 
-      fetch("http://localhost:5000/mutation-test", {
+      fetch(`http://${backendHost}/mutation-test`, {
         method: "POST",        
         headers: {
           "Content-Type": "application/json",
@@ -506,7 +515,7 @@
     });
 
     // WebSocket (Socket.IO) connection
-    const socket = io('ws://127.0.0.1:5000');
+    const socket = io(`ws://${getBackendHost()}`);
     socket.on('connect', function() {
       appendToOutput('WebSocket connected.', 'ws');
       socket.emit('my_event', {data: 'I\'m connected!'});
