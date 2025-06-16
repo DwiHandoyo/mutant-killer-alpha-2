@@ -13,6 +13,8 @@ from llm.core.scanner import scan_and_generate_tests
 from llm.core.models import model_factory
 from git import Repo, GitCommandError
 from parser.infection_parser import group_by_original_file_path
+import logging
+logging.basicConfig(level=logging.INFO)
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = os.getenv("PORT", 5000)  
@@ -42,18 +44,18 @@ def get_repo_path(repo_name: str) -> str:
 def handle_connect():
     
     send_websocket_notification("connected")
-    print('Client connected')
+    logging.info('Client connected')
 
 @socketio.on('my_event')
 def handle_my_custom_event(json_data):
-    print(f"Received WebSocket message: {json_data}")
+    logging.info(f"Received WebSocket message: {json_data}")
 
 def clone_repository(repository_url: str, local_directory: str) -> None:
     """Clones a Git repository using GitPython."""
     try:
-        print("cloning repository...")
+        logging.info("cloning repository...")
         Repo.clone_from(repository_url, local_directory)
-        print("Repository cloned successfully.")
+        logging.info("Repository cloned successfully.")
     except GitCommandError as e:
         raise RuntimeError(f"Git clone failed: {str(e)}")
 
@@ -132,7 +134,7 @@ def run_composer_install(local_directory: str) -> None:
         shutil.copy2(vendor_zip_path, target_zip_path)
 
         if os.path.exists(target_vendor):
-            print("removing vendor folder")
+            logging.info("removing vendor folder")
             os.system('rmdir /S /Q "{}"'.format(target_vendor))
 
         # Extract the zip file in the target directory
@@ -143,7 +145,7 @@ def run_composer_install(local_directory: str) -> None:
         try :
             os.remove(vendor_zip_path)
         except PermissionError:
-            print("PermissionError: Unable to remove vendor.zip. It might be in use.")
+            logging.info("PermissionError: Unable to remove vendor.zip. It might be in use.")
 
     # Copy custom-mutators folder
     if os.path.exists(source_mutators):
@@ -245,7 +247,7 @@ def parse_infection_failures_and_errors(raw_output: str):
         "failure_count": failure_count,
         "error_count": error_count
         }
-    print(f"failure count: {failure_count}, error count: {error_count}")
+    logging.info(f"failure count: {failure_count}, error count: {error_count}")
     return error_messages +  failure_messages, infection_report
 
 
@@ -332,17 +334,17 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
         except RuntimeError as e:
             send_websocket_notification("Failed to generate tests using LLM, skipping.")
         except Exception as e:
-            print(e)
+            logging.info(e)
 
     #final evaluation
     try:
         test_error_final_iteration, _ = run_php_testing(local_directory)
         infection_error_final_iteration, _ = run_mutation_testing(local_directory)
-        print(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
+        logging.info(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
         error_files = extract_failed_classes(test_error_final_iteration + infection_error_final_iteration)
         test_files = os.listdir(os.path.join(local_directory, 'tests'))
-        print(f"Error files to remove: {error_files}")
-        print(f"Test files: {test_files}")
+        logging.info(f"Error files to remove: {error_files}")
+        logging.info(f"Test files: {test_files}")
         send_websocket_notification("Removing test files for errors: " + str(error_files))
         ## remove errors files with case insensitive name
         for error_file in error_files:
@@ -350,7 +352,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             for test_file in test_files:
                 if test_file.lower().startswith(error_file):
                     test_file_path = os.path.join(local_directory, 'tests', test_file)
-                    print(f"Removing test file: {test_file_path}")
+                    logging.info(f"Removing test file: {test_file_path}")
                     os.remove(test_file_path)
     except Exception as e:
         error += "error in phpunit: " + str(e) + '\n'
@@ -395,10 +397,10 @@ def run_mutation_testing(local_directory: str) -> None:
     # html = open(html_report, "r").read()
 
     result_out = result.stdout.strip()
-    print(f"Mutation testing output: {result_out}")
+    logging.info(f"Mutation testing output: {result_out}")
     error_message, infection_report = parse_infection_failures_and_errors(result_out)
-    print(f"infection report: {infection_report}")
-    print(f"error message: {error_message}")
+    logging.info(f"infection report: {infection_report}")
+    logging.info(f"error message: {error_message}")
     send_websocket_notification("Mutation testing completed and report generated.")
     return error_message, infection_report
 
@@ -511,7 +513,7 @@ def download_file(filename):
 
 @app.route('/mutation-test', methods=['POST'])
 def mutation_test():
-    print("testing mutation test endpoint")
+    logging.info("testing mutation test endpoint")
     data: Dict[str, Any] = request.get_json()
     if not data or 'repository_url' not in data or 'websocket_endpoint' not in data:
         return jsonify({'error': 'Missing repository_url or websocket_endpoint'}), 400
@@ -540,7 +542,7 @@ def analyze_unkilled_mutants(local_directory: str) -> str:
 
 def send_websocket_notification(message: str) -> None:
     """Sends a notification to the client via WebSocket."""
-    print(f"Sending WebSocket notification: {message}")
+    logging.info(f"Sending WebSocket notification: {message}")
     socketio.emit('notification', {'message': message})
 
 # Serve index.html at root

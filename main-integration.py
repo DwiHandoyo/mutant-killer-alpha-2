@@ -15,6 +15,8 @@ from git import Repo, GitCommandError
 from parser.infection_parser import group_by_original_file_path
 import base64
 import datetime
+import logging
+logging.basicConfig(level=logging.INFO)
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = os.getenv("PORT", 5000)  
@@ -30,56 +32,56 @@ sio = socketio.Client()
 
 @sio.event
 def connect():
-    print("Connected to websocket server")
+    logging.info("Connected to websocket server")
 
 @sio.event
 def disconnect():
-    print("Disconnected from websocket server")
+    logging.info("Disconnected from websocket server")
 
 # Handler untuk menerima status/report dari server
 @sio.on("status")
 def on_status(data):
-    print("[STATUS]", data)
+    logging.info("[STATUS]", data)
 
 @sio.on("report")
 def on_report(data):
-    print("[REPORT]", data)
+    logging.info("[REPORT]", data)
 
 
 @sio.on("join_room")
 def on_join_room(data):
-    print("[join_room]", data)
+    logging.info("[join_room]", data)
 
 def send_websocket_notification(message: str) -> None:
     """Sends a notification to the client via WebSocket."""
-    print(f"Sending WebSocket notification: {message}")
+    logging.info(f"Sending WebSocket notification: {message}")
     sio.emit('notification', {'message': message})
 
 def send_websocket_notification_fe(message: str) -> None:
-    print(f"Sending WebSocket notification: {message}")
+    logging.info(f"Sending WebSocket notification: {message}")
     sio.emit('file_inclusion', {'message': message})
 
 # Fungsi untuk join room dan trigger proses (bisa dipanggil dari main)
 def process_repository(repo_url, branch=None, room_name=None):
     sio.emit("join_room", {"room_name": room_name})
-    print(f"Joined room: {room_name}")
+    logging.info(f"Joined room: {room_name}")
     # sio.emit("report", {"git_url": repo_url, "room_name": room_name})
-    print(f"Requested file inclusion detection for repo: {repo_url}")
+    logging.info(f"Requested file inclusion detection for repo: {repo_url}")
 
 def main():
     
     ws_url = os.getenv("PUBLIC_SOCKET_URL", "http://localhost:8080")
     try:
-        print(f"Connecting to WebSocket server at {ws_url}...")
+        logging.info(f"Connecting to WebSocket server at {ws_url}...")
         git_url = "https://github.com/user/repo.git"
         sio.connect(ws_url, transports=["websocket"])
-        print(f"Connected to WebSocket server at {ws_url}")
+        logging.info(f"Connected to WebSocket server at {ws_url}")
         send_websocket_notification_fe(git_url)
         # If you want to use a specific room_name from FE, pass it here
         process_repository(git_url, "main", room_name)
         sio.wait()
     except Exception as e:
-        print(f"WebSocket connection error: {e}")
+        logging.info(f"WebSocket connection error: {e}")
         send_websocket_notification_fe(f"WebSocket connection error: {e}")
 
 CLONED_REPOS_DIR = os.path.join(os.getcwd(), "cloned_repos")  # Directory to store cloned repos
@@ -101,9 +103,9 @@ def get_repo_path(repo_name: str) -> str:
 def clone_repository(repository_url: str, local_directory: str) -> None:
     """Clones a Git repository using GitPython."""
     try:
-        print("cloning repository...")
+        logging.info("cloning repository...")
         Repo.clone_from(repository_url, local_directory)
-        print("Repository cloned successfully.")
+        logging.info("Repository cloned successfully.")
     except GitCommandError as e:
         raise RuntimeError(f"Git clone failed: {str(e)}")
 
@@ -182,7 +184,7 @@ def run_composer_install(local_directory: str) -> None:
         shutil.copy2(vendor_zip_path, target_zip_path)
 
         if os.path.exists(target_vendor):
-            print("removing vendor folder")
+            logging.info("removing vendor folder")
             os.system('rmdir /S /Q "{}"'.format(target_vendor))
 
         # Extract the zip file in the target directory
@@ -193,7 +195,7 @@ def run_composer_install(local_directory: str) -> None:
         try :
             os.remove(vendor_zip_path)
         except PermissionError:
-            print("PermissionError: Unable to remove vendor.zip. It might be in use.")
+            logging.info("PermissionError: Unable to remove vendor.zip. It might be in use.")
 
     # Copy custom-mutators folder
     if os.path.exists(source_mutators):
@@ -295,7 +297,7 @@ def parse_infection_failures_and_errors(raw_output: str):
         "failure_count": failure_count,
         "error_count": error_count
         }
-    print(f"failure count: {failure_count}, error count: {error_count}")
+    logging.info(f"failure count: {failure_count}, error count: {error_count}")
     return error_messages +  failure_messages, infection_report
 
 
@@ -382,17 +384,17 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
         except RuntimeError as e:
             send_websocket_notification_fe("Failed to generate tests using LLM, skipping.")
         except Exception as e:
-            print(e)
+            logging.info(e)
 
     #final evaluation
     try:
         test_error_final_iteration, _ = run_php_testing(local_directory)
         infection_error_final_iteration, _ = run_mutation_testing(local_directory)
-        print(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
+        logging.info(f"Test error final iteration: {extract_failed_classes(infection_error_final_iteration)}")
         error_files = extract_failed_classes(test_error_final_iteration + infection_error_final_iteration)
         test_files = os.listdir(os.path.join(local_directory, 'tests'))
-        print(f"Error files to remove: {error_files}")
-        print(f"Test files: {test_files}")
+        logging.info(f"Error files to remove: {error_files}")
+        logging.info(f"Test files: {test_files}")
         send_websocket_notification_fe("Removing test files for errors: " + str(error_files))
         ## remove errors files with case insensitive name
         for error_file in error_files:
@@ -400,7 +402,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             for test_file in test_files:
                 if test_file.lower().startswith(error_file):
                     test_file_path = os.path.join(local_directory, 'tests', test_file)
-                    print(f"Removing test file: {test_file_path}")
+                    logging.info(f"Removing test file: {test_file_path}")
                     os.remove(test_file_path)
     except Exception as e:
         error += "error in phpunit: " + str(e) + '\n'
@@ -445,10 +447,10 @@ def run_mutation_testing(local_directory: str) -> None:
     # html = open(html_report, "r").read()
 
     result_out = result.stdout.strip()
-    print(f"Mutation testing output: {result_out}")
+    logging.info(f"Mutation testing output: {result_out}")
     error_message, infection_report = parse_infection_failures_and_errors(result_out)
-    print(f"infection report: {infection_report}")
-    print(f"error message: {error_message}")
+    logging.info(f"infection report: {infection_report}")
+    logging.info(f"error message: {error_message}")
     send_websocket_notification_fe("Mutation testing completed and report generated.")
     return error_message, infection_report
 
@@ -497,7 +499,7 @@ def mutation_test_handler(repository_url: str, websocket_endpoint: str, branch: 
         if not os.path.exists(local_directory):
             if branch:
                 clone_url = repository_url
-                print(f"Cloning branch {branch} from {clone_url}...")
+                logging.info(f"Cloning branch {branch} from {clone_url}...")
                 Repo.clone_from(clone_url, local_directory, branch=branch)
             else:
                 clone_repository(repository_url, local_directory)
@@ -602,17 +604,17 @@ def serve_index():
 
 @sio.on("process_repository_file_inclusion")
 def on_process_repository_file_inclusion(data):
-    print("[RUN]", data)
+    logging.info("[RUN]", data)
     repo_url = data.get('git_url') or data.get('repo_url') or data.get('repository_url')
     room = data.get('room_name') or data.get('websocket_endpoint')
     if not repo_url or not room:
-        print("[ERROR] Missing repo_url or room_name in process_repository event")
+        logging.info("[ERROR] Missing repo_url or room_name in process_repository event")
         return
     # Jalankan proses utama
     result = mutation_test_handler(repo_url, room)
     payload = generate_file_inclusion_payload(result)
     sio.emit('file_inclusion_result', payload)
-    print(f"[EMIT] file_inclusion_result to room {room}")
+    logging.info(f"[EMIT] file_inclusion_result to room {room}")
 
 def get_infection_field(report, field, default='-'):
     # Helper untuk ambil field dari infection.json (dict), fallback jika tidak ada

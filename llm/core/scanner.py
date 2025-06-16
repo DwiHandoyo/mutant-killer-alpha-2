@@ -1,3 +1,5 @@
+import logging
+logging.basicConfig(level=logging.INFO)
 
 def scan_and_generate_tests(src_dir, output_dir, adapter, itteration_error=None, error_files=[], mode="file"):
     import os
@@ -14,7 +16,7 @@ def scan_and_generate_tests(src_dir, output_dir, adapter, itteration_error=None,
         filepath = os.path.join(src_dir, filename)
         test_filename = filename.replace('.php', 'test').lower()
         if test_filename not in error_files_lowercased and test_filename in test_files_lowercased and itteration_error:
-            print(f"Skipping {test_filename} as it is not in the error files list.")
+            logging.info(f"Skipping {test_filename} as it is not in the error files list.")
             continue
         if mode == "file":
             adapter.generate_test_case_from_file(filepath, output_dir, itteration_error)
