@@ -321,8 +321,25 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             send_websocket_notification("Mutation testing failed, skipping test generation.")
 
         infection_result = {}
-        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
-            infection_result = json.load(f)
+        # Handle infection.json not found for first_infection_result
+        infection_json_path = os.path.join(local_directory, 'infection.json')
+        if os.path.exists(infection_json_path):
+            with open(infection_json_path, 'r') as f:
+                infection_result = json.load(f)
+        else:
+            first_infection_result = {
+                'stats': {
+                    "totalMutantsCount": 0,
+                    "killedCount": 0,
+                    "notCoveredCount": 0,
+                    "escapedCount": 0,
+                    "errorCount": 0,
+                    "syntaxErrorCount": 0,
+                    "skippedCount": 0,
+                    "ignoredCount": 0,
+                    "timeOutCount": 0
+                }
+            }
         infection_result_map = group_by_original_file_path(infection_result, local_directory)
 
         
@@ -330,7 +347,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
 
 
         if i == 0:
-            first_infection_result = infection_result
+            first_infection_result = infection_result if len(first_infection_result) == 0 else first_infection_result
             first_test_report = test_report
             first_infection_report = infection_report
             error = None
@@ -476,8 +493,27 @@ def mutation_test_handler(repository_url: str, websocket_endpoint: str) -> Dict[
             send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
 
         final_infection_result = {}
-        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
-            final_infection_result = json.load(f)
+
+        # Handle infection.json not found
+        infection_json_path = os.path.join(local_directory, 'infection.json')
+        if os.path.exists(infection_json_path):
+            with open(infection_json_path, 'r') as f:
+                final_infection_result = json.load(f)
+        else:
+            # Dummy infection_result with required stats keys
+            final_infection_result = {
+                'stats': {
+                    "totalMutantsCount": 0,
+                    "killedCount": 0,
+                    "notCoveredCount": 0,
+                    "escapedCount": 0,
+                    "errorCount": 0,
+                    "syntaxErrorCount": 0,
+                    "skippedCount": 0,
+                    "ignoredCount": 0,
+                    "timeOutCount": 0
+                }
+            }
 
         # Create a zip file of the 'src' and 'tests' directories only
         zip_filename = f"{repo_name}.zip"
@@ -498,6 +534,8 @@ def mutation_test_handler(repository_url: str, websocket_endpoint: str) -> Dict[
         send_websocket_notification(f"final test report: {final_test_report}")
         send_websocket_notification(f"first infection report: {first_infection_report}")
         send_websocket_notification(f"final infection report: {final_infection_report}")
+
+
         return {
             'status': 'Mutation testing completed successfully.',
             'download_url': download_url,
