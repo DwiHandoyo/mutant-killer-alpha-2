@@ -139,7 +139,7 @@ def run_composer_install(local_directory: str) -> None:
             if os.name == 'nt':
                 os.system('rmdir /S /Q "{}"'.format(target_vendor))
             else:
-                os.system('rmdir -rf "{}"'.format(target_vendor))
+                os.system('rm -rf "{}"'.format(target_vendor))
 
         # Extract the zip file in the target directory
         with zipfile.ZipFile(target_zip_path, 'r') as zipf:
@@ -157,7 +157,7 @@ def run_composer_install(local_directory: str) -> None:
             if os.name == 'nt':
                 os.system('rmdir /S /Q "{}"'.format(target_mutators))
             else:
-                os.system('rmdir -rf "{}"'.format(target_mutators))
+                os.system('rm -rf "{}"'.format(target_mutators))
         shutil.copytree(source_mutators, target_mutators)
 
     # Copy infection.json5 file
