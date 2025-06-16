@@ -221,11 +221,15 @@ def parse_infection_failures_and_errors(raw_output: str):
       - failure_messages: list[str]
       - error_count: int
       - error_messages: list[str]
+      - risky_count: int
+      - risky_messages: list[str]
     """
     failure_count = 0
     failure_messages = ''
     error_count = 0
     error_messages = ''
+    risky_count = 0
+    risky_messages = ''
 
     # Regex blok failure
     failure_header = re.search(r"There (?:was|were) (\d+) failure", raw_output)
@@ -245,17 +249,27 @@ def parse_infection_failures_and_errors(raw_output: str):
         error_blocks = re.findall(
             r"\d+\)\s+([^\n]+)\n((?:\s{9,}.*\n)+)", raw_output
         )
-        # Untuk error, filter blok yang mengandung kata 'Error:' pada message_block
         for test_name, message_block in error_blocks:
             if 'Error:' in message_block:
                 message = test_name.strip() + "\n" + message_block.strip()
                 error_messages += message
+
+    # Regex blok risky
+    risky_header = re.search(r"There (?:was|were) (\d+) risky", raw_output)
+    if risky_header:
+        risky_count = int(risky_header.group(1))
+        risky_blocks = re.findall(r"\d+\)\s+([A-Za-z0-9_\\:]+)\n([^\n]+)", raw_output)
+        for test_name, message in risky_blocks:
+            risky_messages += message
+
     infection_report = {
         "failure_count": failure_count,
-        "error_count": error_count
-        }
-    logging.info(f"failure count: {failure_count}, error count: {error_count}")
-    return error_messages +  failure_messages, infection_report
+        "error_count": error_count,
+        "risky_count": risky_count
+    }
+    logging.info(f"risky messages: {risky_messages}")
+    logging.info(f"failure count: {failure_count}, error count: {error_count}, risky count: {risky_count}")
+    return error_messages + failure_messages + risky_messages, infection_report
 
 
 def run_php_testing(local_directory: str) -> None:
@@ -281,6 +295,7 @@ def run_php_testing(local_directory: str) -> None:
             shell=True,
             capture_output=True
         )
+        logging.info(f"PHPUnit output: {result.stdout}")
     except subprocess.TimeoutExpired:
         raise RuntimeError("PHPUnit tests timed out after 10 minutes.")
     
@@ -297,8 +312,18 @@ def run_php_testing(local_directory: str) -> None:
     failures_index = result_out.find('failures:')
     failures_end_index = result_out.find('--', failures_index + 1)
     failures_message = result_out[failures_index: failures_end_index].strip() if failures_index != -1 else ''
+
+    risky_index = result_out.find('risky tests:')
+    risky_end_index = result_out.find('--', risky_index + 1)
+    risky_message = result_out[risky_index: risky_end_index].strip() if risky_index != -1 else ''
+
+    warnings_index = result_out.find('warnings:')
+    warnings_end_index = result_out.find('--', warnings_index + 1)
+    warnings_message = result_out[warnings_index: warnings_end_index].strip() if warnings_index != -1 else ''
+
+
     test_summary = parse_phpunit_summary(result_out)
-    return error_message + '\n' + failures_message, test_summary
+    return error_message + '\n' + failures_message + '\n' + risky_message + '\n' + warnings_message, test_summary
 
 def generate_tests(local_directory: str) -> Dict[str, Any]:
     first_infection_result, first_test_report, first_infection_report = {}, {}, {}
@@ -679,6 +704,25 @@ def parse_phpunit_failures(raw_output: str):
             failure_messages.append(message)
 
     return failure_count, failure_messages
+
+def parse_phpunit_risky_tests(raw_output: str):
+    """
+    Parse risky tests from phpunit output.
+    Returns:
+        risky_count: int
+        risky_messages: list[str]
+    """
+    risky_count = 0
+    risky_messages = []
+    # Regex for 'There were X risky tests:'
+    risky_header = re.search(r"There (?:was|were) (\d+) risky test", raw_output)
+    if risky_header:
+        risky_count = int(risky_header.group(1))
+        # Find all risky test blocks: e.g. '1) Class::method\nMessage...'
+        risky_blocks = re.findall(r"\d+\)\s+([A-Za-z0-9_\\:]+)\n([^\n]+)", raw_output)
+        for test_name, message in risky_blocks:
+            risky_messages.append(f"{test_name}: {message.strip()}")
+    return risky_count, risky_messages
 
 # @socketio.on('mutation_test')
 # def handle_mutation_test_socketio(data):

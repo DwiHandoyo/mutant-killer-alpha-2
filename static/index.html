@@ -228,17 +228,38 @@
       output.scrollTop = output.scrollHeight;
     }
 
+    // Show status message after successful detection and persist in localStorage
+    function showStatusSuccess(msg) {
+      document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
+      localStorage.setItem('mutationStatusMsg', msg);
+    }
+
+    // Restore status message on page load, but clear it if not a fresh success
+    window.addEventListener('DOMContentLoaded', function() {
+      // Only show status if last action was success and not after refresh
+      if (performance.navigation.type === 1) { // 1 = Reload
+        localStorage.removeItem('mutationStatusMsg');
+        document.getElementById('statusArea').innerHTML = "";
+      } else {
+        const msg = localStorage.getItem('mutationStatusMsg');
+        if (msg) {
+          document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
+        }
+      }
+    });
+
     clearButton.addEventListener("click", function() {
       output.innerHTML = "";
       downloadArea.innerHTML = "";
+      document.getElementById('statusArea').innerHTML = "";
+      localStorage.removeItem('mutationStatusMsg');
       if (mutationChart) {
         mutationChart.destroy();
       }
     });
 
-    function showStatusSuccess(msg) {
-      document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
-    }
+    // Do NOT clear status message on Generate
+
     function showSummary(data) {
       if (!data.summary) return;
       const s = data.summary;
