@@ -135,7 +135,11 @@ def run_composer_install(local_directory: str) -> None:
 
         if os.path.exists(target_vendor):
             logging.info("removing vendor folder")
-            os.system('rmdir /S /Q "{}"'.format(target_vendor))
+            
+            if os.name == 'nt':
+                os.system('rmdir /S /Q "{}"'.format(target_vendor))
+            else:
+                os.system('rmdir rm -rf "{}"'.format(target_vendor))
 
         # Extract the zip file in the target directory
         with zipfile.ZipFile(target_zip_path, 'r') as zipf:
@@ -150,7 +154,10 @@ def run_composer_install(local_directory: str) -> None:
     # Copy custom-mutators folder
     if os.path.exists(source_mutators):
         if os.path.exists(target_mutators):
-            os.system('rmdir /S /Q "{}"'.format(target_mutators))
+            if os.name == 'nt':
+                os.system('rmdir /S /Q "{}"'.format(target_mutators))
+            else:
+                os.system('rmdir rm -rf "{}"'.format(target_mutators))
         shutil.copytree(source_mutators, target_mutators)
 
     # Copy infection.json5 file
