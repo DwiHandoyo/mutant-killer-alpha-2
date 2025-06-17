@@ -1,18 +1,20 @@
 import os
 import subprocess
 import shutil
-import time
+import asyncio
 import zipfile
 import re
 import json
 from typing import Any, Dict
-from flask import Flask, request, jsonify, send_file, send_from_directory, render_template
-from flask_socketio import SocketIO
+from flask import Flask, request, jsonify, send_file, send_from_directory
+import socketio
 from flask_cors import CORS
 from llm.core.scanner import scan_and_generate_tests
 from llm.core.models import model_factory
 from git import Repo, GitCommandError
 from parser.infection_parser import group_by_original_file_path
+import base64
+import datetime
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -22,7 +24,65 @@ MODEL = 'gemini'
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+room_name = ''
+
+# Inisialisasi Sync Socket.IO client
+sio = socketio.Client()
+
+@sio.event
+def connect():
+    logging.info("Connected to websocket server")
+
+@sio.event
+def disconnect():
+    logging.info("Disconnected from websocket server")
+
+# Handler untuk menerima status/report dari server
+@sio.on("status")
+def on_status(data):
+    logging.info("[STATUS]", data)
+
+@sio.on("report")
+def on_report(data):
+    logging.info("[REPORT]", data)
+
+
+@sio.on("join_room")
+def on_join_room(data):
+    logging.info("[join_room]", data)
+
+def send_websocket_notification(message: str) -> None:
+    """Sends a notification to the client via WebSocket."""
+    logging.info(f"Sending WebSocket notification: {message}")
+    sio.emit('notification', {'message': message})
+
+def send_websocket_notification_fe(message: str) -> None:
+    logging.info(f"Sending WebSocket notification: {message}")
+    sio.emit('file_inclusion', {'message': message})
+
+# Fungsi untuk join room dan trigger proses (bisa dipanggil dari main)
+def process_repository(repo_url, branch=None, room_name=None):
+    sio.emit("join_room", {"room_name": room_name})
+    logging.info(f"Joined room: {room_name}")
+    # sio.emit("report", {"git_url": repo_url, "room_name": room_name})
+    logging.info(f"Requested file inclusion detection for repo: {repo_url}")
+
+def main():
+    
+    ws_url = os.getenv("PUBLIC_SOCKET_URL", "http://localhost:8080")
+    try:
+        logging.info(f"Connecting to WebSocket server at {ws_url}...")
+        git_url = "https://github.com/user/repo.git"
+        sio.connect(ws_url, transports=["websocket"])
+        logging.info(f"Connected to WebSocket server at {ws_url}")
+        send_websocket_notification_fe(git_url)
+        # If you want to use a specific room_name from FE, pass it here
+        process_repository(git_url, "main", room_name)
+        sio.wait()
+    except Exception as e:
+        logging.info(f"WebSocket connection error: {e}")
+        send_websocket_notification_fe(f"WebSocket connection error: {e}")
 
 CLONED_REPOS_DIR = os.path.join(os.getcwd(), "cloned_repos")  # Directory to store cloned repos
 GENERATED_ZIPS_DIR = os.path.join(os.getcwd(), "generated_zips")  # Directory to store cloned repos
@@ -39,16 +99,6 @@ def get_repo_path(repo_name: str) -> str:
     """Gets the full path to a cloned repository."""
     return os.path.join(CLONED_REPOS_DIR, repo_name)
 
-
-@socketio.on('connect')
-def handle_connect():
-    
-    send_websocket_notification("connected")
-    logging.info('Client connected')
-
-@socketio.on('my_event')
-def handle_my_custom_event(json_data):
-    logging.info(f"Received WebSocket message: {json_data}")
 
 def clone_repository(repository_url: str, local_directory: str) -> None:
     """Clones a Git repository using GitPython."""
@@ -94,17 +144,17 @@ def ensure_default_files(local_directory: str):
     if not os.path.exists(composer_path):
         with open(composer_path, "w") as f:
             json.dump(DEFAULT_COMPOSER_JSON, f, indent=2)
-        send_websocket_notification("Default composer.json has been created.")
+        send_websocket_notification_fe("Default composer.json has been created.")
 
     infection_config_path = os.path.join(local_directory, "infection.json5")
     if not os.path.exists(infection_config_path):
         with open(infection_config_path, "w") as f:
             json.dump(DEFAULT_INFECTION_JSON5, f, indent=2)
-        send_websocket_notification("Default infection.json5 has been created.")
+        send_websocket_notification_fe("Default infection.json5 has been created.")
 
 def run_composer_install(local_directory: str) -> None:
     # ensure_default_files(local_directory)
-    # send_websocket_notification("Running `composer update`...")
+    # send_websocket_notification_fe("Running `composer update`...")
     # subprocess.run(["composer", "update", "infection/infection", "--no-interaction", "--prefer-dist"], cwd=local_directory, shell=True)
     # subprocess.run(["composer", "update"], cwd=local_directory, shell=True)
 
@@ -125,7 +175,7 @@ def run_composer_install(local_directory: str) -> None:
     
     vendor_zip_path = os.path.join(app.root_path, 'vendor.zip')
 
-    send_websocket_notification("composer install preparation")
+    send_websocket_notification_fe("composer install preparation")
     # Copy vendor folder using zip strategy
     if os.path.exists(vendor_zip_path):
 
@@ -135,11 +185,7 @@ def run_composer_install(local_directory: str) -> None:
 
         if os.path.exists(target_vendor):
             logging.info("removing vendor folder")
-            
-            if os.name == 'nt':
-                os.system('rmdir /S /Q "{}"'.format(target_vendor))
-            else:
-                os.system('rm -rf "{}"'.format(target_vendor))
+            os.system('rmdir /S /Q "{}"'.format(target_vendor))
 
         # Extract the zip file in the target directory
         with zipfile.ZipFile(target_zip_path, 'r') as zipf:
@@ -154,10 +200,7 @@ def run_composer_install(local_directory: str) -> None:
     # Copy custom-mutators folder
     if os.path.exists(source_mutators):
         if os.path.exists(target_mutators):
-            if os.name == 'nt':
-                os.system('rmdir /S /Q "{}"'.format(target_mutators))
-            else:
-                os.system('rm -rf "{}"'.format(target_mutators))
+            os.system('rmdir /S /Q "{}"'.format(target_mutators))
         shutil.copytree(source_mutators, target_mutators)
 
     # Copy infection.json5 file
@@ -176,7 +219,7 @@ def run_composer_install(local_directory: str) -> None:
     if os.path.exists(source_php_unit):
         shutil.copy2(source_php_unit, target_php_unit)
 
-    send_websocket_notification("Running `composer install`...")
+    send_websocket_notification_fe("Running `composer install`...")
     composer_cmd = ["composer", "install", "--no-interaction", "--prefer-dist", "--no-plugins"]
     result = subprocess.run(composer_cmd, cwd=local_directory, text=True, shell=True)
     
@@ -221,15 +264,11 @@ def parse_infection_failures_and_errors(raw_output: str):
       - failure_messages: list[str]
       - error_count: int
       - error_messages: list[str]
-      - risky_count: int
-      - risky_messages: list[str]
     """
     failure_count = 0
     failure_messages = ''
     error_count = 0
     error_messages = ''
-    risky_count = 0
-    risky_messages = ''
 
     # Regex blok failure
     failure_header = re.search(r"There (?:was|were) (\d+) failure", raw_output)
@@ -249,32 +288,22 @@ def parse_infection_failures_and_errors(raw_output: str):
         error_blocks = re.findall(
             r"\d+\)\s+([^\n]+)\n((?:\s{9,}.*\n)+)", raw_output
         )
+        # Untuk error, filter blok yang mengandung kata 'Error:' pada message_block
         for test_name, message_block in error_blocks:
             if 'Error:' in message_block:
                 message = test_name.strip() + "\n" + message_block.strip()
                 error_messages += message
-
-    # Regex blok risky
-    risky_header = re.search(r"There (?:was|were) (\d+) risky", raw_output)
-    if risky_header:
-        risky_count = int(risky_header.group(1))
-        risky_blocks = re.findall(r"\d+\)\s+([A-Za-z0-9_\\:]+)\n([^\n]+)", raw_output)
-        for test_name, message in risky_blocks:
-            risky_messages += message
-
     infection_report = {
         "failure_count": failure_count,
-        "error_count": error_count,
-        "risky_count": risky_count
-    }
-    logging.info(f"risky messages: {risky_messages}")
-    logging.info(f"failure count: {failure_count}, error count: {error_count}, risky count: {risky_count}")
-    return error_messages + failure_messages + risky_messages, infection_report
+        "error_count": error_count
+        }
+    logging.info(f"failure count: {failure_count}, error count: {error_count}")
+    return error_messages +  failure_messages, infection_report
 
 
 def run_php_testing(local_directory: str) -> None:
     """Runs PHPUnit tests."""
-    send_websocket_notification("Running PHPUnit tests...")
+    send_websocket_notification_fe("Running PHPUnit tests...")
 
     main_command = "vendor/bin/phpunit"
     # if machine is windows then adjust the command
@@ -295,14 +324,13 @@ def run_php_testing(local_directory: str) -> None:
             shell=True,
             capture_output=True
         )
-        logging.info(f"PHPUnit output: {result.stdout}")
     except subprocess.TimeoutExpired:
         raise RuntimeError("PHPUnit tests timed out after 10 minutes.")
     
 
     result_out = result.stdout.strip()
 
-    send_websocket_notification("PHPUnit tests completed.")
+    send_websocket_notification_fe("PHPUnit tests completed.")
     # find errors and errors in the output, start with 'errors' and ends with second '--
     errors_index = result_out.find('errors:')
     # find all occurencies of --
@@ -312,18 +340,8 @@ def run_php_testing(local_directory: str) -> None:
     failures_index = result_out.find('failures:')
     failures_end_index = result_out.find('--', failures_index + 1)
     failures_message = result_out[failures_index: failures_end_index].strip() if failures_index != -1 else ''
-
-    risky_index = result_out.find('risky tests:')
-    risky_end_index = result_out.find('--', risky_index + 1)
-    risky_message = result_out[risky_index: risky_end_index].strip() if risky_index != -1 else ''
-
-    warnings_index = result_out.find('warnings:')
-    warnings_end_index = result_out.find('--', warnings_index + 1)
-    warnings_message = result_out[warnings_index: warnings_end_index].strip() if warnings_index != -1 else ''
-
-
     test_summary = parse_phpunit_summary(result_out)
-    return error_message + '\n' + failures_message + '\n' + risky_message + '\n' + warnings_message, test_summary
+    return error_message + '\n' + failures_message, test_summary
 
 def generate_tests(local_directory: str) -> Dict[str, Any]:
     first_infection_result, first_test_report, first_infection_report = {}, {}, {}
@@ -336,35 +354,18 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             error += test_error + '\n'
         except Exception as e:
             error += "error in phpunit: " + str(e) + '\n'
-            send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
+            send_websocket_notification_fe("PHPUnit tests failed, skipping mutation testing.")
 
         try:
             infection_error, infection_report = run_mutation_testing(local_directory)
             error += infection_error + '\n'
         except Exception as e:
             error += "error in mutation testing: " + str(e) + '\n'
-            send_websocket_notification("Mutation testing failed, skipping test generation.")
+            send_websocket_notification_fe("Mutation testing failed, skipping test generation.")
 
         infection_result = {}
-        # Handle infection.json not found for first_infection_result
-        infection_json_path = os.path.join(local_directory, 'infection.json')
-        if os.path.exists(infection_json_path):
-            with open(infection_json_path, 'r') as f:
-                infection_result = json.load(f)
-        else:
-            first_infection_result = {
-                'stats': {
-                    "totalMutantsCount": 0,
-                    "killedCount": 0,
-                    "notCoveredCount": 0,
-                    "escapedCount": 0,
-                    "errorCount": 0,
-                    "syntaxErrorCount": 0,
-                    "skippedCount": 0,
-                    "ignoredCount": 0,
-                    "timeOutCount": 0
-                }
-            }
+        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
+            infection_result = json.load(f)
         infection_result_map = group_by_original_file_path(infection_result, local_directory)
 
         
@@ -372,7 +373,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
 
 
         if i == 0:
-            first_infection_result = infection_result if len(first_infection_result) == 0 else first_infection_result
+            first_infection_result = infection_result
             first_test_report = test_report
             first_infection_report = infection_report
             error = None
@@ -381,7 +382,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
             model = model_factory(MODEL, infection_result_map)
             scan_and_generate_tests(os.path.join(local_directory, 'src'), os.path.join(local_directory, 'tests'), model, error, error_files)
         except RuntimeError as e:
-            send_websocket_notification("Failed to generate tests using LLM, skipping.")
+            send_websocket_notification_fe("Failed to generate tests using LLM, skipping.")
         except Exception as e:
             logging.info(e)
 
@@ -394,7 +395,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
         test_files = os.listdir(os.path.join(local_directory, 'tests'))
         logging.info(f"Error files to remove: {error_files}")
         logging.info(f"Test files: {test_files}")
-        send_websocket_notification("Removing test files for errors: " + str(error_files))
+        send_websocket_notification_fe("Removing test files for errors: " + str(error_files))
         ## remove errors files with case insensitive name
         for error_file in error_files:
             error_file = error_file.lower()
@@ -405,7 +406,7 @@ def generate_tests(local_directory: str) -> Dict[str, Any]:
                     os.remove(test_file_path)
     except Exception as e:
         error += "error in phpunit: " + str(e) + '\n'
-        send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
+        send_websocket_notification_fe("PHPUnit tests failed, skipping mutation testing.")
 
     return first_infection_result, first_test_report, first_infection_report
     
@@ -422,7 +423,7 @@ def extract_failed_classes(raw):
 
 def run_mutation_testing(local_directory: str) -> None:
     """Runs composer install and then mutation testing using Infection."""
-    send_websocket_notification("Running mutation testing via Infection...")
+    send_websocket_notification_fe("Running mutation testing via Infection...")
     main_command = "vendor/bin/infection"
     # if machine is windows then adjust the command
     if os.name == 'nt':
@@ -450,12 +451,12 @@ def run_mutation_testing(local_directory: str) -> None:
     error_message, infection_report = parse_infection_failures_and_errors(result_out)
     logging.info(f"infection report: {infection_report}")
     logging.info(f"error message: {error_message}")
-    send_websocket_notification("Mutation testing completed and report generated.")
+    send_websocket_notification_fe("Mutation testing completed and report generated.")
     return error_message, infection_report
 
 
 def extract_ast_from_php(directory):
-    send_websocket_notification("Extracting php code...")
+    send_websocket_notification_fe("Extracting php code...")
 
     # Lokasi asli dan target script
     src_script = "ast-utils/extract_ast.php"
@@ -479,66 +480,54 @@ def extract_ast_from_php(directory):
     # time.sleep(100)
     # (Opsional) hapus setelah selesai
     os.remove(target_script)
-    send_websocket_notification("AST extracted.")
+    send_websocket_notification_fe("AST extracted.")
 
-def mutation_test_handler(repository_url: str, websocket_endpoint: str) -> Dict[str, Any]:
-   
-    send_websocket_notification(f"Received repository URL: {repository_url}")
-    send_websocket_notification(f"Using WebSocket endpoint: {websocket_endpoint}")
+def mutation_test_handler(repository_url: str, websocket_endpoint: str, branch: str = None) -> Dict[str, Any]:
+    """
+    Handles mutation testing for a given repository URL, websocket endpoint, and optional branch name.
+    """
+    send_websocket_notification_fe(f"Received repository URL: {repository_url}")
+    send_websocket_notification_fe(f"Using WebSocket endpoint: {websocket_endpoint}")
+    if branch:
+        send_websocket_notification_fe(f"Using branch: {branch}")
 
     repo_name: str = repository_url.split('/')[-1].replace('.git', '')  # Extract repo name
     local_directory: str = get_repo_path(repo_name)
-    send_websocket_notification("running")
+    send_websocket_notification_fe("running")
 
     try:
         if not os.path.exists(local_directory):
-            clone_repository(repository_url, local_directory)
-            send_websocket_notification("Repository cloned successfully.")
+            if branch:
+                clone_url = repository_url
+                logging.info(f"Cloning branch {branch} from {clone_url}...")
+                Repo.clone_from(clone_url, local_directory, branch=branch)
+            else:
+                clone_repository(repository_url, local_directory)
+            send_websocket_notification_fe("Repository cloned successfully.")
         else:
-            send_websocket_notification("Repository already cloned, skipping clone.")
+            send_websocket_notification_fe("Repository already cloned, skipping clone.")
 
         is_php: bool = detect_language(local_directory)
-        send_websocket_notification(f"project is php")
-
+        send_websocket_notification_fe(f"project is php")
 
         if not is_php:
-            send_websocket_notification("Not a PHP project, skipping mutation testing.")
+            send_websocket_notification_fe("Not a PHP project, skipping mutation testing.")
             return jsonify({'status': 'Not a PHP project'}), 400
         
         run_composer_install(local_directory)
-        send_websocket_notification("Composer install completed.")
+        send_websocket_notification_fe("Composer install completed.")
 
         first_infection_result, first_test_report, first_infection_report = generate_tests(local_directory)
         
         try:
             test_error, final_test_report = run_php_testing(local_directory)
-
             infection_error, final_infection_report = run_mutation_testing(local_directory)
         except RuntimeError as e:
-            send_websocket_notification("PHPUnit tests failed, skipping mutation testing.")
+            send_websocket_notification_fe("PHPUnit tests failed, skipping mutation testing.")
 
         final_infection_result = {}
-
-        # Handle infection.json not found
-        infection_json_path = os.path.join(local_directory, 'infection.json')
-        if os.path.exists(infection_json_path):
-            with open(infection_json_path, 'r') as f:
-                final_infection_result = json.load(f)
-        else:
-            # Dummy infection_result with required stats keys
-            final_infection_result = {
-                'stats': {
-                    "totalMutantsCount": 0,
-                    "killedCount": 0,
-                    "notCoveredCount": 0,
-                    "escapedCount": 0,
-                    "errorCount": 0,
-                    "syntaxErrorCount": 0,
-                    "skippedCount": 0,
-                    "ignoredCount": 0,
-                    "timeOutCount": 0
-                }
-            }
+        with open(os.path.join(local_directory, 'infection.json'), 'r') as f:
+            final_infection_result = json.load(f)
 
         # Create a zip file of the 'src' and 'tests' directories only
         zip_filename = f"{repo_name}.zip"
@@ -554,13 +543,12 @@ def mutation_test_handler(repository_url: str, websocket_endpoint: str) -> Dict[
                             zipf.write(file_path, arcname)
 
         # Return the download URL for the zip file
-        download_url = request.host_url.rstrip('/') + f"/download/{zip_filename}"
-        send_websocket_notification(f"first test report: {first_test_report}")
-        send_websocket_notification(f"final test report: {final_test_report}")
-        send_websocket_notification(f"first infection report: {first_infection_report}")
-        send_websocket_notification(f"final infection report: {final_infection_report}")
-
-
+        base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5000")
+        download_url = base_url.rstrip('/') + f"/download/{zip_filename}"
+        send_websocket_notification_fe(f"first test report: {first_test_report}")
+        send_websocket_notification_fe(f"final test report: {final_test_report}")
+        send_websocket_notification_fe(f"first infection report: {first_infection_report}")
+        send_websocket_notification_fe(f"final infection report: {final_infection_report}")
         return {
             'status': 'Mutation testing completed successfully.',
             'download_url': download_url,
@@ -573,7 +561,7 @@ def mutation_test_handler(repository_url: str, websocket_endpoint: str) -> Dict[
         }
 
     except RuntimeError as e:
-        send_websocket_notification(f"Error: {e}")
+        send_websocket_notification_fe(f"Error: {e}")
         return {'error': str(e)}
 
 @app.route('/download/<filename>')
@@ -583,7 +571,6 @@ def download_file(filename):
 
 @app.route('/mutation-test', methods=['POST'])
 def mutation_test():
-    logging.info("testing mutation test endpoint")
     data: Dict[str, Any] = request.get_json()
     if not data or 'repository_url' not in data or 'websocket_endpoint' not in data:
         return jsonify({'error': 'Missing repository_url or websocket_endpoint'}), 400
@@ -596,7 +583,7 @@ def mutation_test():
         return jsonify(response), 200
 
     except RuntimeError as e:
-        send_websocket_notification(f"Error: {e}")
+        send_websocket_notification_fe(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -609,25 +596,122 @@ def analyze_unkilled_mutants(local_directory: str) -> str:
     # For this example, we'll just return a placeholder message.
     return "Analysis of unkilled mutants (implementation needed)"
 
-
-def send_websocket_notification(message: str) -> None:
-    """Sends a notification to the client via WebSocket."""
-    logging.info(f"Sending WebSocket notification: {message}")
-    socketio.emit('notification', {'message': message})
-
 # Serve index.html at root
 @app.route('/')
-def landing_page():
-    return send_from_directory('static', 'landing.html')
-
-@app.route('/scan')
-def scan_dashboard():
+def serve_index():
     return send_from_directory('static', 'index.html')
 
 
-if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=PORT, debug=True, allow_unsafe_werkzeug=True)
+@sio.on("process_repository_file_inclusion")
+def on_process_repository_file_inclusion(data):
+    logging.info("[RUN]", data)
+    repo_url = data.get('git_url') or data.get('repo_url') or data.get('repository_url')
+    room = data.get('room_name') or data.get('websocket_endpoint')
+    if not repo_url or not room:
+        logging.info("[ERROR] Missing repo_url or room_name in process_repository event")
+        return
+    # Jalankan proses utama
+    result = mutation_test_handler(repo_url, room)
+    payload = generate_file_inclusion_payload(result)
+    sio.emit('file_inclusion_result', payload)
+    logging.info(f"[EMIT] file_inclusion_result to room {room}")
 
+def get_infection_field(report, field, default='-'):
+    # Helper untuk ambil field dari infection.json (dict), fallback jika tidak ada
+    if not isinstance(report, dict):
+        return default
+    return report.get(field, default)
+
+def get_infection_metrics(report):
+    # Helper untuk mengambil metrik dari infection.json (dict)
+    stats = report.get('stats', {}) if isinstance(report, dict) else {}
+    # Fallback ke root jika tidak ada stats
+    def get_stat(field, fallback):
+        return stats.get(field, report.get(field, fallback))
+    return {
+        'score': get_stat('msi', 0),
+        'total': get_stat('totalMutantsCount', 0),
+        'killed': get_stat('killedCount', 0),
+        'escaped': get_stat('escapedCount', 0),
+        'errored': get_stat('errorCount', 0)
+    }
+
+def build_vulnerabilities_summary(vuln_dict):
+    # vuln_dict: {file_path: [vuln, ...], ...}
+    total = 0
+    details = []
+    if isinstance(vuln_dict, dict):
+        for file_path, vulns in vuln_dict.items():
+            for v in vulns:
+                # Ambil pesan, fallback ke str(v) jika tidak ada
+                msg = v.get('message') if isinstance(v, dict) else None
+                if not msg:
+                    msg = f"Vulnerability in {file_path}" if file_path else str(v)
+                details.append({'message': msg, 'file': file_path})
+                total += 1
+    return {'totalVulnerabilities': total, 'details': details}
+
+def generate_file_inclusion_payload(data):
+    # data: dict hasil mutation_test_handler
+    first = data.get('first_infection_result', {})
+    final = data.get('final_infection_result', {})
+    # --- mutationAnalysis field ---
+    initialMsi = get_infection_metrics(first)
+    finalMsi = get_infection_metrics(final)
+    mutation_analysis = {
+        'generatedAt': datetime.datetime.utcnow().isoformat() + 'Z',
+        'initial': initialMsi,
+        'final': finalMsi,
+        'improvement': {
+            'score': finalMsi['score'] - initialMsi['score'],
+            'additionalKilled': finalMsi['killed'] - initialMsi['killed']
+        }
+    }
+    # --- summary field (existing) ---
+    summary = {
+        'generatedAt': datetime.datetime.utcnow().isoformat() + 'Z',
+        'repository': {
+            'path': data.get('repoPath', ''),
+            'name': os.path.basename(data.get('repoPath', ''))
+        },
+        'vulnerabilities': {
+            'total': sum(len(v) for v in data.get('vulnerabilities', {}).values()) if isinstance(data.get('vulnerabilities', {}), dict) else 0,
+            'files': len(data.get('vulnerabilities', {})) if isinstance(data.get('vulnerabilities', {}), dict) else 0
+        },
+        'mutationTesting': {
+            'initialScore': get_infection_field(first, 'msiScore', 0),
+            'finalScore': get_infection_field(final, 'msiScore', 0),
+            'improvement': get_infection_field(final, 'msiScore', 0) - get_infection_field(first, 'msiScore', 0)
+        },
+        'generatedTests': {
+            'path': data.get('exportedTestsPath', ''),
+            'directory': os.path.basename(data.get('exportedTestsPath', ''))
+        }
+    }
+    # Ambil vulnerabilities dict (per file)
+    vuln_dict = data.get('vulnerabilities', {})
+    vuln_summary = build_vulnerabilities_summary(vuln_dict)
+    payload = {
+        'msi_score': get_infection_field(first, 'msiScore', '-'),
+        'msi_score_after': get_infection_field(final, 'msiScore', '-'),
+        'detail': {
+            'coverage': get_infection_field(final, 'coverage', '-'),
+            'kill': get_infection_field(final, 'killedMutants', '-'),
+            'unkill': get_infection_field(final, 'escapedMutants', '-'),
+            'total': get_infection_field(final, 'totalMutants', '-'),
+        },
+        'testcases': data.get('testcases', []),
+        'downloadPath': data.get('download_url', '-'),
+        'vulnerabilities': vuln_summary,
+        'summary': summary,
+        'mutationAnalysis': mutation_analysis,
+        'status': data.get('status', ''),
+        'error': data.get('error', None),
+    }
+    return payload
+
+if __name__ == "__main__":
+    main()
 
 
 import json
@@ -705,34 +789,15 @@ def parse_phpunit_failures(raw_output: str):
 
     return failure_count, failure_messages
 
-def parse_phpunit_risky_tests(raw_output: str):
-    """
-    Parse risky tests from phpunit output.
-    Returns:
-        risky_count: int
-        risky_messages: list[str]
-    """
-    risky_count = 0
-    risky_messages = []
-    # Regex for 'There were X risky tests:'
-    risky_header = re.search(r"There (?:was|were) (\d+) risky test", raw_output)
-    if risky_header:
-        risky_count = int(risky_header.group(1))
-        # Find all risky test blocks: e.g. '1) Class::method\nMessage...'
-        risky_blocks = re.findall(r"\d+\)\s+([A-Za-z0-9_\\:]+)\n([^\n]+)", raw_output)
-        for test_name, message in risky_blocks:
-            risky_messages.append(f"{test_name}: {message.strip()}")
-    return risky_count, risky_messages
-
-# @socketio.on('mutation_test')
-# def handle_mutation_test_socketio(data):
-#     # Frontend (web) biasanya mengirim: { git_url, room_name }
-#     repo_url = data.get('git_url') or data.get('repository_url')
-#     room = data.get('room_name') or data.get('websocket_endpoint')
-#     if not repo_url or not room:
-#         socketio.emit('mutation_test_result', {'error': 'Missing git_url/repository_url or room_name/websocket_endpoint'})
-#         return
-#     # Jalankan proses utama
-#     response = mutation_test_handler(repo_url, room)
-#     # Kirim hasil ke room yang sesuai (agar user yang request dapat hasilnya saja)
-#     socketio.emit('mutation_test_result', response, room=room)
+@socketio.on('mutation_test')
+def handle_mutation_test_socketio(data):
+    # Frontend (web) biasanya mengirim: { git_url, room_name }
+    repo_url = data.get('git_url') or data.get('repository_url')
+    room = data.get('room_name') or data.get('websocket_endpoint')
+    if not repo_url or not room:
+        socketio.emit('mutation_test_result', {'error': 'Missing git_url/repository_url or room_name/websocket_endpoint'})
+        return
+    # Jalankan proses utama
+    response = mutation_test_handler(repo_url, room)
+    # Kirim hasil ke room yang sesuai (agar user yang request dapat hasilnya saja)
+    socketio.emit('mutation_test_result', response, room=room)

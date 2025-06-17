@@ -1,42 +1,333 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Simple Frontend</title>
+  <title>Mutation Testing Dashboard</title>
+  <meta charset="UTF-8">
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #e5e7eb;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 32px 40px 24px 40px;
+    }
+    h1 {
+      text-align: left;
+      color: #22223b;
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 32px;
+    }
+    label {
+      font-weight: 600;
+      color: #22223b;
+    }
+    input[type="text"] {
+      width: 70%;
+      max-width: 700px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 1em;
+    }
+    button {
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 600;
+      min-width: 120px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #1e40af;
+    }
+    #output {
+      width: 100%;
+      min-height: 220px;
+      max-height: 350px;
+      font-family: 'Fira Mono', 'Consolas', monospace;
+      font-size: 1em;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      padding: 12px;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      resize: vertical;
+      color: #22223b;
+      overflow-y: auto;
+    }
+    /* Update download-btn to match other buttons */
+    .download-btn {
+      background: #059669;
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 8px 32px;
+      font-weight: 600;
+      min-width: 120px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 1em;
+      height: 40px;
+      display: inline-block;
+      margin-top: 0;
+      margin-left: 0;
+      margin-right: 0;
+      float: none;
+    }
+    .download-btn:hover {
+      background: #047857;
+    }
+    .section-title {
+      margin-top: 24px;
+      color: #374151;
+      font-size: 1.1em;
+      font-weight: 600;
+    }
+    #chartContainer {
+      margin-top: 32px;
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .alert {
+      background: #a7c7b7;
+      color: #1b4332;
+      border: 0;
+      font-weight: 500;
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 5px;
+    }
+    .mb-4 {
+      margin-bottom: 1.5rem;
+    }
+    .p-3 {
+      padding: 1rem;
+    }
+    .border {
+      border: 1px solid #d1d5db;
+    }
+    .rounded {
+      border-radius: 0.375rem;
+    }
+    .bg-white {
+      background-color: #fff;
+    }
+    .shadow-sm {
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .fw-bold {
+      font-weight: 700;
+    }
+    .text-muted {
+      color: #6b7280;
+    }
+    /* Custom styles for output messages */
+    .output-message {
+      padding: 7px 12px;
+      border-radius: 5px;
+      margin: 0 0 2px 0;
+      font-family: inherit;
+      font-size: 1em;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid #e5e7eb;
+    }
+    .output-message.ws {
+      background: #e0f2fe;
+      border-color: #38bdf8;
+      color: #0369a1;
+    }
+    .output-message.default {
+      background: #f3f4f6;
+      color: #22223b;
+    }
+  </style>
 </head>
 <body>
-  <input type="text" id="repositoryUrl" placeholder="Enter repository URL">
-  <button id="cloneRepository">Clone Repository</button><br><br>
-  <button id="runMutationTest">Run Mutation Test</button><br><br>
-  <textarea id="output" rows="10" cols="50" readonly></textarea><br>
-  <button id="clearOutput">Clear Output</button>
+  <div class="container">
+    <h1>Mutant Killer Alpha</h1>
+    <div style="margin-bottom:24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;">
+      <div style="flex:1 1 auto;">
+        <label for="repositoryUrl">Git Repository URL</label><br>
+        <input type="text" id="repositoryUrl" placeholder="https://..." /><br>
+        <div style="margin-top:12px; display: flex; gap: 12px;">
+          <button id="runMutationTest">Generate</button>
+          <button id="clearOutput">Clear Output</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: flex-end;">
+        <div id="downloadArea" style="margin:0; padding:0;"></div>
+      </div>
+    </div>
+    <div id="statusArea"></div>
+    <div id="summaryArea"></div>
+    <div id="mutationArea"></div>
+    <div id="vulnArea"></div>
+    <!-- --- Output Area: clearer per-line display --- -->
+    <div id="outputArea" style="max-width:2250px;width:90%;margin:24px 0 0 0;text-align:left;">
+      <div class="section-title">Log Output:</div>
+      <div id="output" style="width:90%;min-height:220px;max-height:350px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:16px;font-family:'Fira Mono','Consolas',monospace;font-size:1em;color:#22223b;resize:vertical;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow-y:auto;white-space:pre-wrap;word-break:break-word;margin-bottom:18px;display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div id="chartContainer">
+      <canvas id="mutationChart" height="120"></canvas>
+      <div style="height:24px"></div>
+      <canvas id="msiChart" height="80"></canvas>
+    </div>
+  </div>
 
-  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const output = document.getElementById("output");
     const clearButton = document.getElementById("clearOutput");
-    const cloneButton = document.getElementById("cloneRepository");
     const runMutationTestButton = document.getElementById("runMutationTest");
+    const downloadArea = document.getElementById("downloadArea");
+    const ctx = document.getElementById('mutationChart').getContext('2d');
+    let mutationChart = null;
 
-    cloneButton.addEventListener("click", function() {
-      const repoUrl = document.getElementById("repositoryUrl").value;
-      fetch("/clone?repo_url=" + encodeURIComponent(repoUrl), {
-        method: "GET",
-      })
-      .then(response => response.text())
-      .then(result => {
-        appendToOutput("Clone result: " + result);
-        document.getElementById("repositoryUrl").value = "";
-      })
-      .catch(error => {
-        appendToOutput("Error cloning: " + error);
-      });
+    function appendToOutput(message, type = 'default') {
+      const output = document.getElementById("output");
+      const msgDiv = document.createElement('div');
+      msgDiv.textContent = message;
+      msgDiv.style.padding = '7px 12px';
+      msgDiv.style.borderRadius = '5px';
+      msgDiv.style.margin = '0 0 2px 0';
+      msgDiv.style.fontFamily = 'inherit';
+      msgDiv.style.fontSize = '1em';
+      msgDiv.style.whiteSpace = 'pre-wrap';
+      msgDiv.style.wordBreak = 'break-word';
+      msgDiv.style.border = '1px solid #e5e7eb';
+      if (type === 'ws') {
+        msgDiv.style.background = '#e0f2fe';
+        msgDiv.style.borderColor = '#38bdf8';
+        msgDiv.style.color = '#0369a1';
+      } else {
+        msgDiv.style.background = '#f3f4f6';
+        msgDiv.style.color = '#22223b';
+      }
+      output.appendChild(msgDiv);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    // Show status message after successful detection and persist in localStorage
+    function showStatusSuccess(msg) {
+      document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
+      localStorage.setItem('mutationStatusMsg', msg);
+    }
+
+    // Restore status message on page load, but clear it if not a fresh success
+    window.addEventListener('DOMContentLoaded', function() {
+      // Only show status if last action was success and not after refresh
+      if (performance.navigation.type === 1) { // 1 = Reload
+        localStorage.removeItem('mutationStatusMsg');
+        document.getElementById('statusArea').innerHTML = "";
+      } else {
+        const msg = localStorage.getItem('mutationStatusMsg');
+        if (msg) {
+          document.getElementById('statusArea').innerHTML = `<div class='alert'>${msg}</div>`;
+        }
+      }
     });
+
+    clearButton.addEventListener("click", function() {
+      output.innerHTML = "";
+      downloadArea.innerHTML = "";
+      document.getElementById('statusArea').innerHTML = "";
+      localStorage.removeItem('mutationStatusMsg');
+      if (mutationChart) {
+        mutationChart.destroy();
+      }
+    });
+
+    // Do NOT clear status message on Generate
+
+    function showSummary(data) {
+      if (!data.summary) return;
+      const s = data.summary;
+      document.getElementById('summaryArea').innerHTML = `
+        <div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+          <h5 class='fw-bold mb-2'>📁 Repository Info</h5>
+          <p><strong>Path:</strong> ${s.repository.path}</p>
+          <p><strong>Total Vulnerabilities:</strong> ${s.vulnerabilities.total}</p>
+          <p><strong>Total Files Affected:</strong> ${s.vulnerabilities.files}</p>
+        </div>`;
+    }
+    function showMutation(data) {
+      if (!data.mutationAnalysis) return;
+      const m = data.mutationAnalysis;
+      document.getElementById('mutationArea').innerHTML = `
+        <div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+          <h5 class='fw-bold mb-2'>🧬 Mutation Testing Summary</h5>
+          <p><strong>Initial MSI:</strong> ${m.initial.score}%</p>
+          <p><strong>Final MSI:</strong> ${m.final.score}%</p>
+          <p><strong>Total Mutants:</strong> ${m.final.total}</p>
+          <p><strong>Killed:</strong> ${m.final.killed}</p>
+          <p><strong>Escaped:</strong> ${m.final.escaped}</p>
+          <p><strong>Improvement:</strong> ${m.improvement.score}%</p>
+        </div>`;
+    }
+    function showVuln(data) {
+      if (!data.vulnerabilities) return;
+      const v = data.vulnerabilities;
+      let html = `<div class='mb-4 p-3 border rounded bg-white shadow-sm' style='max-width:900px;'>
+        <h5 class='fw-bold mb-2'>🔍 Heuristic Vulnerability Summary</h5>
+        <p><strong>Total Detected:</strong> ${v.totalVulnerabilities}</p>`;
+      if (v.details && v.details.length > 0) {
+        html += `<ul class='mb-0'>` + v.details.map(x => `<li>${x.message}</li>`).join('') + `</ul>`;
+      } else {
+        html += `<p class='text-muted'>No vulnerabilities found.</p>`;
+      }
+      html += `</div>`;
+      document.getElementById('vulnArea').innerHTML = html;
+    }
+
+    function renderKeyValue(obj, indent = 0) {
+      if (typeof obj !== 'object' || obj === null) return `<span>${obj}</span>`;
+      let html = '';
+      const pad = '&nbsp;'.repeat(indent * 2);
+      for (const key in obj) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+          html += `${pad}<b>${key}:</b><br>` + renderKeyValue(obj[key], indent + 1);
+        } else {
+          html += `${pad}<b>${key}:</b> <span>${obj[key]}</span><br>`;
+        }
+      }
+      return html;
+    }
+
+    // Get backend host dynamically for fetch and socket.io
+    function getBackendHost() {
+      // Use window.location.hostname to always connect to the same host as the frontend
+      const host = window.location.hostname;
+      const port = 5000; // Change if your backend uses a different port
+      return `${host}:${port}`;
+    }
 
     runMutationTestButton.addEventListener("click", function() {
       const repositoryUrl = document.getElementById("repositoryUrl").value;
-      const websocketEndpoint = "ws://127.0.0.1:5000"; // Example WebSocket endpoint
+      const backendHost = getBackendHost();
+      const websocketEndpoint = `ws://${backendHost}`;
 
-      fetch("http://localhost:5000/mutation-test", {
+      fetch(`http://${backendHost}/mutation-test`, {
         method: "POST",        
         headers: {
           "Content-Type": "application/json",
@@ -48,22 +339,195 @@
       })
       .then(response => response.json())
       .then(data => {
+        downloadArea.innerHTML = "";
+        // Show test/infection reports outside output box
+        const reportArea = document.getElementById('reportArea') || (function() {
+          const div = document.createElement('div');
+          div.id = 'reportArea';
+          div.style.marginTop = '24px';
+          div.style.background = '#f9fafb';
+          div.style.borderRadius = '8px';
+          div.style.padding = '16px';
+          div.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)';
+          div.style.fontFamily = 'Fira Mono, Consolas, monospace';
+          div.style.fontSize = '1em';
+          div.style.color = '#22223b';
+          document.querySelector('.container').appendChild(div);
+          return div;
+        })();
+        let html = '';
+        if (data.first_test_report) {
+          html += `<b>First Test Report:</b><br>${renderKeyValue(data.first_test_report)}<br>`;
+        }
+        if (data.final_test_report) {
+          html += `<b>Final Test Report:</b><br>${renderKeyValue(data.final_test_report)}<br>`;
+        }
+        if (data.first_infection_report) {
+          html += `<b>First Infection Report:</b><br>${renderKeyValue(data.first_infection_report)}<br>`;
+        }
+        if (data.final_infection_report) {
+          html += `<b>Final Infection Report:</b><br>${renderKeyValue(data.final_infection_report)}<br>`;
+        }
+        reportArea.innerHTML = html;
+
+        showStatusSuccess('✅ Deteksi berhasil! Silakan download testcases.');
+        showSummary(data);
+        showMutation(data);
+        showVuln(data);
+
         if (data.download_url) {
-          appendToOutput("Mutation test completed! Downloading zip file...");
           const downloadButton = document.createElement("button");
           downloadButton.textContent = "Download Repository Zip";
+          downloadButton.className = "download-btn";
           downloadButton.onclick = function() {
             const downloadLink = document.createElement("a");
             downloadLink.href = data.download_url;
             downloadLink.download = "repository.zip";
-            alert(data.download_url);
             document.body.appendChild(downloadLink);
             downloadLink.click();
             document.body.removeChild(downloadLink);
           };
-          document.body.appendChild(downloadButton);
-        } else {
+          downloadArea.appendChild(downloadButton);
+        } else if (data.error) {
           appendToOutput("Error: " + (data.error || "Unknown error"));
+        }
+
+        // Display infection results as a comparison chart
+        if (data.first_infection_result && data.final_infection_result && data.first_infection_result.stats && data.final_infection_result.stats) {
+          // Chart 1: all except msi & mutationCodeCoverage
+          const keys = [
+            "totalMutantsCount","killedCount","notCoveredCount","escapedCount", "errorCount", "syntaxErrorCount", "skippedCount", "ignoredCount", "timeOutCount"
+          ];
+          const statsFirst = data.first_infection_result.stats;
+          const statsFinal = data.final_infection_result.stats;
+          const chartLabels = keys;
+          const chartDataFirst = keys.map(key => statsFirst[key] || 0);
+          const chartDataFinal = keys.map(key => statsFinal[key] || 0);
+
+          if (mutationChart) mutationChart.destroy();
+          mutationChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: chartLabels,
+              datasets: [
+                {
+                  label: 'First Infection',
+                  data: chartDataFirst,
+                  backgroundColor: 'rgba(37,99,235,0.7)',
+                  borderRadius: 6,
+                  borderWidth: 1
+                },
+                {
+                  label: 'Final Infection',
+                  data: chartDataFinal,
+                  backgroundColor: 'rgba(5,150,105,0.7)',
+                  borderRadius: 6,
+                  borderWidth: 1
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: true },
+                title: {
+                  display: true,
+                  text: 'Mutation Testing Metrics Comparison',
+                  font: { size: 18 }
+                },
+                datalabels: {
+                  anchor: 'end',
+                  align: 'start',
+                  color: '#22223b',
+                  font: { weight: 'bold', size: 13 },
+                  formatter: function(value) {
+                    return value;
+                  }
+                }
+              },
+              scales: {
+                x: { ticks: { color: '#22223b', font: { size: 13 } }, stacked: false },
+                y: { beginAtZero: true, ticks: { color: '#22223b', font: { size: 13 } } }
+              }
+            },
+            plugins: [ChartDataLabels]
+          });
+
+          // Chart 2: msi & mutationCodeCoverage only
+          const msiKeys = ["msi", "mutationCodeCoverage", "coveredCodeMsi"];
+          const msiLabels = ["MSI", "Mutation Code Coverage", "coveredCodeMsi"];
+          const msiDataFirst = msiKeys.map(key => statsFirst[key] || 0);
+          const msiDataFinal = msiKeys.map(key => statsFinal[key] || 0);
+          const msiCtx = document.getElementById('msiChart').getContext('2d');
+          if (window.msiChartObj) window.msiChartObj.destroy();
+          window.msiChartObj = new Chart(msiCtx, {
+            type: 'bar',
+            data: {
+              labels: msiLabels,
+              datasets: [
+                {
+                  label: 'First Infection',
+                  data: msiDataFirst,
+                  backgroundColor: 'rgba(37,99,235,0.7)',
+                  borderRadius: 6,
+                  borderWidth: 1
+                },
+                {
+                  label: 'Final Infection',
+                  data: msiDataFinal,
+                  backgroundColor: 'rgba(5,150,105,0.7)',
+                  borderRadius: 6,
+                  borderWidth: 1
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: true },
+                title: {
+                  display: true,
+                  text: 'MSI & Mutation Code Coverage',
+                  font: { size: 16 }
+                },
+                datalabels: {
+                  anchor: 'end',
+                  align: 'start',
+                  color: '#22223b',
+                  font: { weight: 'bold', size: 13 },
+                  formatter: function(value) {
+                    return value + '%';
+                  }
+                }
+              },
+              scales: {
+                x: { ticks: { color: '#22223b', font: { size: 13 } }, stacked: false },
+                y: { beginAtZero: true, max: 100, ticks: { color: '#22223b', font: { size: 13 } } }
+              }
+            },
+            plugins: [ChartDataLabels]
+          });
+        }
+
+        // Still show text output for details
+        if (data.first_infection_result && data.final_infection_result) {
+          appendToOutput("Comparing Infection Results:");
+          const keys = [
+            "totalMutantsCount","killedCount","notCoveredCount","escapedCount", "errorCount", "syntaxErrorCount", "skippedCount", "ignoredCount", "timeOutCount", "msi", "mutationCodeCoverage", "coveredCodeMsi"
+          ];
+          keys.forEach(key => {
+            const firstValue = data.first_infection_result?.stats[key] || 0;
+            const finalValue = data.final_infection_result?.stats[key] || 0;
+            const difference = finalValue - firstValue;
+            appendToOutput(`${key}: First = ${firstValue}, Final = ${finalValue}, Difference = ${difference}`);
+          });
+        } else {
+          if (data.first_infection_result) {
+            appendToOutput("First Infection Result: " + JSON.stringify(data.first_infection_result, null, 2));
+          }
+          if (data.final_infection_result) {
+            appendToOutput("Final Infection Result: " + JSON.stringify(data.final_infection_result, null, 2));
+          }
         }
       })
       .catch(error => {
@@ -71,31 +535,17 @@
       });
     });
 
-    function appendToOutput(message) {
-      output.value += message + "\n";
-      output.scrollTop = output.scrollHeight; // Auto-scroll
-    }
-
-    clearButton.addEventListener("click", function() {
-      output.value = "";
-    });
-
-    const socket = io('ws://127.0.0.1:5000');
-
-    // socket.addEventListener('open', function (event) {
-    //   appendToOutput('WebSocket connected.');
-    // });
+    // WebSocket (Socket.IO) connection
+    const socket = io(`ws://${getBackendHost()}`);
     socket.on('connect', function() {
+      appendToOutput('WebSocket connected.', 'ws');
       socket.emit('my_event', {data: 'I\'m connected!'});
-    })
-
-
-    socket.addEventListener('notification', function (event) {
-        appendToOutput(event.message);
     });
-
-    socket.addEventListener('close', function (event) {
-        console.log('WebSocket disconnected.');
+    socket.on('notification', function (event) {
+      appendToOutput(event.message, 'ws');
+    });
+    socket.on('close', function () {
+      appendToOutput('WebSocket disconnected.', 'ws');
     });
   </script>
 </body>

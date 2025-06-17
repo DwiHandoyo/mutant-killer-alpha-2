@@ -8,3 +8,5 @@ python-dotenv
 openai
 anthropic
 google-generativeai
+GitPython
+logging

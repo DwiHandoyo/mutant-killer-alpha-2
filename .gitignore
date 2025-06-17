@@ -2,3 +2,4 @@ cloned_repos/
 generated_zips/
 vendor/
 .env
+vendor.zip
