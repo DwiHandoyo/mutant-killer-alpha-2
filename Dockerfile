@@ -25,4 +25,4 @@ COPY . /app/
 EXPOSE 5000
 
 # Command to run Flask app
-CMD ["python", "main.py"]
+CMD ["python", "main-client.py"]
