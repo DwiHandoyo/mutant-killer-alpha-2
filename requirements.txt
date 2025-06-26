@@ -9,4 +9,3 @@ openai
 anthropic
 google-generativeai
 GitPython
-logging
